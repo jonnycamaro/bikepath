@@ -1,0 +1,109 @@
+# Bikepath 🚲
+
+Fahrrad-Routenplaner und Navigations-App für **Android und iPhone**.
+Bikepath ist eine installierbare Web-App (PWA). Sie braucht keinen App Store und läuft mit einer Codebasis auf beiden Plattformen.
+
+Architektur und Umsetzung: [docs/ARCHITEKTUR.md](docs/ARCHITEKTUR.md)
+
+## Funktionen
+
+- **Karte:** Suche (Adressen, Orte, Koordinaten), eigener Standort mit Folgemodus und Fahrtrichtung, 7 Kartenstile, 3D-Gelände, Ebenen (Radrouten, MTB-Routen, Relief, Rad-POIs). Langes Drücken auf die Karte öffnet „Route hierher“.
+- **Planen:**
+  - Start, Ziel und Zwischenpunkte per Antippen oder Suche setzen
+  - Punkte verschieben, Routenlinie ziehen, um einen Punkt einzufügen
+  - Rückgängig, Wiederholen, Umkehren, Reihenfolge ändern, Freihand-Abschnitte
+  - 9 Routing-Optionen: Ausgewogen, Schnellste, Radwege, Rennrad, Geschmeidig, Gravel, Mountainbike, E-Bike, Kürzeste
+  - Radweg-Stufe niedrig/mittel/hoch, Schnellziele Zuhause und Arbeit
+  - Distanz, Dauer, Auf- und Abstieg, Höhenprofil nach Steigung eingefärbt
+  - Route Insights: Untergrund, Wegtyp und Steigung, auch farbig auf der Karte
+  - Geschwindigkeitsregler, Wetter mit Gegenwind-Anteil, Rundtour-Planer
+- **Navigation:**
+  - Zwei Modi: Turn-by-Turn mit Ansagen oder Selbstgeführt (nur Position auf der Linie)
+  - Einstiegspunkt wählbar: Routenstart, nächster Punkt oder Route umkehren
+  - Abbiege-Banner mit „Dann …“, Sprachansagen auf Deutsch
+  - Automatische Neuberechnung – führt wahlweise zurück auf die geplante Route
+  - Steigungsansagen und Anstiegsanzeige („Anstieg 2/5 · 7 %“)
+  - Hinweis bei verpasstem Zwischenstopp: Überspringen oder Zurückgehen
+  - Fahrradcomputer mit 4 Layouts; langer Druck auf ein Feld ändert es
+  - Höhen-Vorschau, Abbiegeliste, Hinweis bei schwachem GPS
+  - Display bleibt an; Minimieren-Widget für die anderen Tabs
+- **Aufzeichnen:** Freie Fahrt mit Pause und Auto-Pause (unter 2 km/h, nur bei gutem GPS), mit Ansage. Wird die App unterbrochen, lässt sich die Fahrt wiederherstellen – samt GPS-Überwachung, Bildschirmsperre und Batteriesparmodus.
+  Die Höhenwerte des Handys sind ungenauer als die Position: Bikepath glättet sie und leitet die Schwelle fürs Zählen von Höhenmetern aus der tatsächlichen Messgenauigkeit der Fahrt ab, damit eine flache Runde keinen Aufstieg erfindet. Der GPX-Export enthält weiterhin die Rohwerte.
+- **Batteriesparmodus:** Aus, nach Geräteeinstellung oder immer an – seltenere Ortung, Dunkelmodus und vereinfachte Karte.
+- **Meine Routen:** Geplant, Gefahren, Favoriten, Sammlungen. Detailansicht, Bearbeiten, Umbenennen, Löschen.
+  - Import: GPX und KML
+  - Export: GPX und KML, auch über das Teilen-Menü
+- **Profil:** Statistik für 7 Tage, 30 Tage und gesamt. Navigationsmodus, Batteriesparmodus, Darstellung (System/Hell/Dunkel), Adressen, Fahrradcomputer-Layouts, Offline-Karten.
+- **Offline:** App-Shell, gespeicherte Routen und heruntergeladene Kartengebiete funktionieren ohne Netz.
+- **Simulation:** Mit dem ▷-Knopf in der Navigation lässt sich eine Route virtuell abfahren. Gedacht für Demo und Test.
+
+## Starten
+
+```bash
+npm install
+```
+
+```bash
+npm run dev
+```
+
+Öffnet http://localhost:5173. Am Mac-Browser ist GPS nur ungenau verfügbar.
+
+### Auf dem Handy testen (gleiches WLAN)
+
+```bash
+npm run dev:phone
+```
+
+Auf dem Handy `https://<IP-des-Macs>:5173` öffnen und die Zertifikatswarnung bestätigen. GPS funktioniert nur über HTTPS.
+
+### Dauerhaft installieren (ohne Store)
+
+1. Build erstellen:
+
+   ```bash
+   npm run build
+   ```
+
+2. Den Ordner `dist/` auf ein HTTPS-Hosting hochladen, z. B. GitHub Pages, Cloudflare Pages oder Netlify (alle kostenlos).
+3. Auf dem Handy installieren:
+   - **iPhone:** Link in Safari öffnen → Teilen → **„Zum Home-Bildschirm“**
+   - **Android:** Link in Chrome öffnen → Menü → **„App installieren“**
+
+Danach startet Bikepath im Vollbild mit eigenem Icon.
+
+## Tests
+
+```bash
+npm test
+```
+
+59 Unit-Tests: Geometrie, BRouter-Parser mit einer echten Antwort, Abbiegehinweise, Navigations-Engine (Ansagen, Verlassen der Route, Ankunft, selbstgeführter Modus), Steigungserkennung und -ansagen, Routen-Operationen (Einstiegspunkt, Umkehren, Rückführung auf die Route), Recorder (Auto-Pause-Schwellen, GPS-Sprünge, Zeitmessung, Höhenfilter), GPX/KML, Rundtour, Offline-Kacheln, Planer-Store mit IndexedDB und die Fahrt-Session (Wiederherstellen nach Unterbrechung, GPS-Signalhinweis).
+
+```bash
+npm run test:live
+```
+
+Prüft die öffentlichen Dienste live; braucht Internet.
+
+```bash
+npm run typecheck
+```
+
+## Technik
+
+React 18, TypeScript, Vite, MapLibre GL, zustand, idb-keyval, vite-plugin-pwa (Workbox).
+
+| Zweck | Dienst |
+|---|---|
+| Routing | [BRouter](https://brouter.de) |
+| Suche | [Photon](https://photon.komoot.io) |
+| Vektorkarten | [OpenFreeMap](https://openfreemap.org) |
+| Rasterkarten | CyclOSM, OSM, OpenTopoMap, Esri |
+| Höhen | AWS Terrain Tiles |
+| POIs | Overpass |
+| Wetter | Open-Meteo |
+
+Alle Dienste sind kostenlos und brauchen keinen API-Schlüssel. Kartendaten © OpenStreetMap-Mitwirkende.
+
+**Hinweis zu POIs:** Die öffentlichen Overpass-Server sind oft überlastet. Bikepath probiert der Reihe nach vier Server und zeigt sonst einen Hinweis an.
