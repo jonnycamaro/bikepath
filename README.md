@@ -3,7 +3,17 @@
 Fahrrad-Routenplaner und Navigations-App für **Android und iPhone**.
 Bikepath ist eine installierbare Web-App (PWA). Sie braucht keinen App Store und läuft mit einer Codebasis auf beiden Plattformen.
 
-Architektur und Umsetzung: [docs/ARCHITEKTUR.md](docs/ARCHITEKTUR.md)
+**Dokumentation**
+
+| | |
+|---|---|
+| [docs/ARCHITEKTUR.md](docs/ARCHITEKTUR.md) | Warum eine Web-App, Aufbau, bekannte Grenzen |
+| [docs/ENTWICKLUNG.md](docs/ENTWICKLUNG.md) | Codeaufbau, häufige Änderungen, Konventionen, Fallstricke |
+| [docs/TESTEN.md](docs/TESTEN.md) | Unit-Tests, Dienste live prüfen, Test auf dem Handy |
+| [docs/VEROEFFENTLICHEN.md](docs/VEROEFFENTLICHEN.md) | Deploy über GitHub Pages, Basispfad, Fehlersuche |
+
+Unter `.claude/skills/` liegen zusätzlich Anleitungen für Claude Code
+(Handytest, Veröffentlichen, Routing-Profile).
 
 ## Funktionen
 
