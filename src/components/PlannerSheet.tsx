@@ -1,19 +1,24 @@
 import { useEffect, useRef, useState } from 'react';
 import { reverseGeocode } from '../lib/geocode';
+import { bikeById, rideSpeed } from '../lib/bike';
 import { bearing, formatDistance, formatDuration } from '../lib/geo';
 import { downloadFile, safeFilename, toGPX } from '../lib/gpx';
-import { PROFILES, profileById } from '../lib/routing';
 import { fetchWeather, headwindShare, weatherLabel, type Weather } from '../lib/weather';
 
 import { bboxOf, useStore } from '../store';
 import ElevationChart from './ElevationChart';
-import { IconHome, IconWork, IconClose, IconDown, IconDownload, IconLoop, IconNavigate, IconPen, IconRedo, IconSave, IconSwap, IconTrash, IconUndo, IconUp, IconWind } from './icons';
+import { IconLocate, IconClose, IconDown, IconDownload, IconLoop, IconNavigate, IconPen, IconRedo, IconSave, IconSwap, IconTrash, IconUndo, IconUp, IconWind } from './icons';
+import PlanModeChoice from './PlanModeChoice';
 import RouteInsights from './RouteInsights';
 import SearchBox from './SearchBox';
+import { compassName } from '../lib/roundtrip';
+import { BikeSelector } from './BikeSheet';
+import { DirBadge } from './RoundTripSheet';
+import { ProfileSelector } from './Sheets';
 
 export default function PlannerSheet() {
   const s = useStore();
-  const { waypoints, route, routing, routeError, profileId, settings } = s;
+  const { waypoints, route, routing, routeError, profileId, settings, loop, loopProblem } = s;
   const [size, setSize] = useState<'collapsed' | 'half' | 'full'>('half');
   const collapsed = size === 'collapsed';
   const [weather, setWeather] = useState<Weather | null>(null);
@@ -29,6 +34,23 @@ export default function PlannerSheet() {
     }
   }, [waypoints]);
 
+  // A trip starts at the GPS position when there is one – once per chosen trip, so a
+  // start the user removed stays removed. Clearing the plan asks for the kind again.
+  const choosing = waypoints.length === 0 && !loop && s.planKind !== 'trip';
+  const autoStart = useRef(false);
+  useEffect(() => {
+    if (s.planKind == null) autoStart.current = false;
+    if (waypoints.length && !loop && s.planKind !== 'trip') useStore.setState({ planKind: 'trip' });
+    if (autoStart.current || s.planKind !== 'trip' || s.editingId) return;
+    if (waypoints.length) {
+      autoStart.current = true;
+      return;
+    }
+    if (!s.fix) return;
+    autoStart.current = true;
+    s.addWaypoint(s.fix.lngLat, 'Mein Standort');
+  }, [s.fix, waypoints.length, loop, s.planKind]);
+
   // fit map when a new route arrives for the first time
   const fitted = useRef<string>('');
   useEffect(() => {
@@ -37,7 +59,7 @@ export default function PlannerSheet() {
       return;
     }
     const key = route.waypoints.map((w) => w.id).join();
-    if (fitted.current === '' && waypoints.length >= 2) s.focusMap({ bbox: bboxOf(route) });
+    if (fitted.current === '' && waypoints.length >= 2 && !loop) s.focusMap({ bbox: bboxOf(route) });
     fitted.current = key;
   }, [route]);
 
@@ -60,7 +82,27 @@ export default function PlannerSheet() {
     };
   }, []);
 
-  const speed = settings.speedKmh[profileId] ?? profileById(profileId).speedKmh;
+  const speed = rideSpeed(settings, profileId);
+  // round trip: what was asked for and how far the result is from it
+  const loopGoal = loop ? (loop.duration ? formatDuration(loop.duration) : `${Math.round(loop.distance / 1000)} km`) : '';
+  const loopOff = loop && route ? (loop.duration ? Math.abs(route.duration - loop.duration) / loop.duration : Math.abs(route.distance - loop.distance) / loop.distance) : 0;
+  /** apply what the round trip says would solve its problem */
+  const fixLoop = () => {
+    const fix = loopProblem?.fix;
+    if (!loop || !fix) return;
+    if (fix.direction != null) s.setLoop({ ...loop, direction: fix.direction });
+    else if (loop.duration && fix.duration) {
+      const min = Math.ceil((fix.duration * 1.03) / 300) * 5;
+      s.setLoop({ ...loop, duration: min * 60, distance: (min * 60 * speed) / 3.6 });
+    } else if (fix.distance) s.setLoop({ ...loop, duration: undefined, distance: Math.ceil((fix.distance * 1.03) / 5000) * 5000 });
+  };
+  const fixLabel = !loopProblem
+    ? ''
+    : loopProblem.fix.direction != null
+      ? `Nach ${compassName(loopProblem.fix.direction)} ausrichten`
+      : loop?.duration && loopProblem.fix.duration
+        ? `Auf ${formatDuration(Math.ceil((loopProblem.fix.duration * 1.03) / 300) * 300)} verlängern`
+        : `Auf ${Math.ceil(((loopProblem.fix.distance ?? 0) * 1.03) / 5000) * 5} km verlängern`;
   const useMyLocation = () => {
     if (!s.fix) {
       s.toastMsg('Noch kein GPS-Standort');
@@ -90,7 +132,7 @@ export default function PlannerSheet() {
           <h2 className="grow" style={{ margin: 0 }}>{s.editingId ? s.planName || 'Route bearbeiten' : 'Route planen'}</h2>
           <button className="icon-btn" onClick={s.undoPlan} disabled={!s.undo.length} aria-label="Rückgängig"><IconUndo size={20} /></button>
           <button className="icon-btn" onClick={s.redoPlan} disabled={!s.redo.length} aria-label="Wiederholen"><IconRedo size={20} /></button>
-          <button className="icon-btn" onClick={s.reverse} disabled={waypoints.length < 2} aria-label="Richtung umkehren"><IconSwap size={20} /></button>
+          <button className="icon-btn" onClick={s.reverse} disabled={!loop && waypoints.length < 2} aria-label="Richtung umkehren"><IconSwap size={20} /></button>
           <button className="icon-btn" onClick={s.clearPlan} disabled={!waypoints.length} aria-label="Route löschen"><IconTrash size={20} /></button>
         </div>
 
@@ -109,63 +151,45 @@ export default function PlannerSheet() {
           </div>
         )}
 
-        {waypoints.length === 0 && (
+        {choosing && (
           <>
-            <div className="hint">Tippe auf die Karte, um Start und Ziel zu setzen – oder suche einen Ort.</div>
+            <div className="muted" style={{ marginBottom: 12 }}>Was möchtest du planen?</div>
+            <PlanModeChoice onPick={s.startPlan} />
+          </>
+        )}
+
+        {waypoints.length === 0 && !choosing && (
+          <>
+            <div className="hint">Tippe auf die Karte, um den Start zu setzen – oder suche einen Ort.</div>
             <div className="spacer" />
-            <SearchBox placeholder="Start suchen" showMyLocation onSelect={(p) => { s.addWaypoint(p.lngLat, p.name); s.focusMap({ center: p.lngLat, zoom: 14 }); }} />
-            <div className="spacer" />
-            <div className="row">
-              <button className="btn grow" onClick={useMyLocation}>Von meinem Standort</button>
-              <button className="btn grow" onClick={() => s.setSheet('roundtrip')}><IconLoop size={18} /> Rundtour</button>
+            <div className="row" style={{ alignItems: 'flex-start' }}>
+              <div className="grow">
+                <SearchBox placeholder="Start suchen" poiTitle="Start wählen" onSelect={(p) => { s.addWaypoint(p.lngLat, p.name); s.focusMap({ center: p.lngLat, zoom: 14 }); }} />
+              </div>
+              <button className="icon-btn pick-on-map" onClick={useMyLocation} aria-label="Mein Standort als Start" title="Mein Standort als Start" data-testid="start-here">
+                <IconLocate size={22} />
+              </button>
             </div>
             <div className="spacer" />
-            <div className="row wrap">
-              {(['home', 'work'] as const).map((k) => {
-                const place = s.settings.places[k];
-                const label = k === 'home' ? 'Zuhause' : 'Arbeit';
-                return place ? (
-                  <button key={k} className="btn sm grow" onClick={() => { s.addWaypoint(place.lngLat, label); s.focusMap({ center: place.lngLat, zoom: 14 }); }} data-testid={`place-${k}`}>
-                    {k === 'home' ? <IconHome size={16} /> : <IconWork size={16} />} {label}
-                  </button>
-                ) : (
-                  <button
-                    key={k}
-                    className="btn sm grow"
-                    style={{ opacity: 0.75 }}
-                    onClick={() => {
-                      const w = s.waypoints[0]?.lngLat ?? s.fix?.lngLat;
-                      if (!w) {
-                        s.toastMsg(`Setze zuerst einen Punkt, um ${label} zu speichern`);
-                        return;
-                      }
-                      s.setSettings({ places: { ...s.settings.places, [k]: { lngLat: w, name: label } } });
-                      s.toastMsg(`${label} gespeichert`);
-                    }}
-                  >
-                    {k === 'home' ? <IconHome size={16} /> : <IconWork size={16} />} {label} festlegen
-                  </button>
-                );
-              })}
-            </div>
+            <button className="btn ghost block" onClick={() => useStore.setState({ planKind: null })} data-testid="plan-kind-back">Andere Art wählen</button>
           </>
         )}
 
         {waypoints.length > 0 && (
           <div className="wps" data-testid="waypoints">
             {waypoints.map((w, i) => {
-              const kind = i === 0 ? 'start' : i === waypoints.length - 1 ? 'end' : 'via';
+              const kind = i === 0 ? 'start' : i === waypoints.length - 1 && !loop ? 'end' : 'via';
               const color = kind === 'start' ? 'var(--green)' : kind === 'end' ? 'var(--red)' : 'var(--primary)';
               return (
                 <div key={w.id}>
                   <div className="wp">
                     <div className="dot" style={{ background: color }}>{kind === 'start' ? 'A' : kind === 'end' ? 'B' : i}</div>
                     <div className="name">{w.name ?? `${w.lngLat[1].toFixed(5)}, ${w.lngLat[0].toFixed(5)}`}</div>
-                    {i > 0 && <button className="icon-btn" style={{ width: 32, height: 32 }} onClick={() => { const n = [...waypoints]; [n[i - 1], n[i]] = [n[i], n[i - 1]]; s.setWaypoints(n); }} aria-label="Nach oben"><IconUp size={16} /></button>}
-                    {i < waypoints.length - 1 && <button className="icon-btn" style={{ width: 32, height: 32 }} onClick={() => { const n = [...waypoints]; [n[i + 1], n[i]] = [n[i], n[i + 1]]; s.setWaypoints(n); }} aria-label="Nach unten"><IconDown size={16} /></button>}
+                    {!loop && i > 0 && <button className="icon-btn" style={{ width: 32, height: 32 }} onClick={() => { const n = [...waypoints]; [n[i - 1], n[i]] = [n[i], n[i - 1]]; s.setWaypoints(n); }} aria-label="Nach oben"><IconUp size={16} /></button>}
+                    {!loop && i < waypoints.length - 1 && <button className="icon-btn" style={{ width: 32, height: 32 }} onClick={() => { const n = [...waypoints]; [n[i + 1], n[i]] = [n[i], n[i + 1]]; s.setWaypoints(n); }} aria-label="Nach unten"><IconDown size={16} /></button>}
                     <button className="icon-btn" style={{ width: 32, height: 32 }} onClick={() => s.removeWaypoint(w.id)} aria-label="Punkt entfernen"><IconClose size={16} /></button>
                   </div>
-                  {i < waypoints.length - 1 && (
+                  {!loop && i < waypoints.length - 1 && (
                     <button
                       className="small"
                       style={{ marginLeft: 16, padding: '4px 8px', color: s.freehand.includes(i) ? 'var(--orange)' : 'var(--muted)', display: 'flex', gap: 6, alignItems: 'center' }}
@@ -178,22 +202,53 @@ export default function PlannerSheet() {
                 </div>
               );
             })}
-            {waypoints.length === 1 && <div className="hint">Tippe auf die Karte, um das Ziel zu setzen.</div>}
-            <SearchBox placeholder={waypoints.length === 1 ? 'Ziel suchen' : 'Weiteren Punkt hinzufügen'} onSelect={(p) => s.addWaypoint(p.lngLat, p.name)} />
+            {loop ? (
+              <>
+                <button className="profile-select" onClick={() => s.setSheet('roundtrip')} data-testid="loop-card">
+                  <DirBadge dir={loop.direction} size={30} />
+                  <span className="grow">
+                    <span className="title">Rundtour · {loopGoal}</span>
+                    <span className="meta">Richtung {compassName(loop.direction)} · antippen zum Ändern</span>
+                  </span>
+                  <IconDown size={18} className="chev" />
+                </button>
+                <div className="row">
+                  <button className="btn sm grow" onClick={() => s.setLoop({ ...loop, variant: loop.variant + 1 })} data-testid="loop-variant"><IconLoop size={16} /> Andere Variante</button>
+                  <button className="btn sm grow" onClick={s.editLoopByHand} disabled={!route || routing}><IconPen size={16} /> Von Hand anpassen</button>
+                </div>
+                <SearchBox placeholder="Zwischenstopp hinzufügen" poiTitle="Zwischenstopp wählen" onSelect={(p) => s.addWaypoint(p.lngLat, p.name)} />
+                {waypoints.length === 1 && <div className="muted small" style={{ marginTop: 6 }}>Oder auf die Karte tippen – die Rundtour führt dann dort vorbei.</div>}
+                {loopProblem && !routing && (
+                  <div className="problem" role="alert" data-testid="loop-problem">
+                    <b>{loopProblem.kind === 'direction' ? 'Der Zwischenstopp liegt in der anderen Richtung' : 'Die Zwischenstopps passen nicht in die Rundtour'}</b>
+                    <p>{loopProblem.message}</p>
+                    <div className="row wrap">
+                      <button className="btn sm primary" onClick={fixLoop} data-testid="loop-fix">{fixLabel}</button>
+                      <button className="btn sm" onClick={() => s.setSheet('roundtrip')}>Selbst anpassen</button>
+                    </div>
+                  </div>
+                )}
+                {route && !routing && loopOff > 0.12 && (
+                  <div className="muted small" style={{ marginTop: 6 }}>Von hier aus passt keine Tour genauer auf {loopGoal} – eine andere Variante oder Richtung kann helfen.</div>
+                )}
+              </>
+            ) : (
+              <>
+                {waypoints.length === 1 && <div className="hint">Tippe auf die Karte, um das Ziel zu setzen.</div>}
+                <SearchBox placeholder={waypoints.length === 1 ? 'Ziel suchen' : 'Weiteren Punkt hinzufügen'} poiTitle={waypoints.length === 1 ? 'Ziel wählen' : 'Weiteren Punkt wählen'} onSelect={(p) => s.addWaypoint(p.lngLat, p.name)} />
+              </>
+            )}
           </div>
         )}
 
-        <h3>Routing-Option</h3>
-        <div className="chips" data-testid="profiles">
-          {PROFILES.map((p) => (
-            <button key={p.id} className={`chip ${p.id === profileId ? 'active' : ''}`} onClick={() => s.setProfile(p.id)} title={p.description}>
-              {p.label}
-            </button>
-          ))}
-        </div>
-        <div className="muted small">{profileById(profileId).description}</div>
+        {!choosing && (
+          <>
+            <h3>Routenoption</h3>
+            <ProfileSelector />
+          </>
+        )}
 
-        {routing && <div className="muted small" style={{ marginTop: 8 }}>Route wird berechnet …</div>}
+        {routing && <div className="muted small" style={{ marginTop: 8 }}>{loop ? 'Rundtour wird gesucht …' : 'Route wird berechnet …'}</div>}
         {routeError && <div className="err">{routeError}</div>}
 
         {route && (
@@ -203,8 +258,11 @@ export default function PlannerSheet() {
             <h3>Route Insights</h3>
             <RouteInsights route={route} />
 
-            <h3>Geschwindigkeit: {speed} km/h</h3>
-            <input type="range" min={8} max={35} value={speed} onChange={(e) => s.setSettings({ speedKmh: { ...settings.speedKmh, [profileId]: Number(e.target.value) } })} aria-label="Geschwindigkeit" />
+            <h3>Tempo</h3>
+            <BikeSelector
+              onOpen={() => s.setSheet('bike')}
+              note={speed === bikeById(settings.bikeType).speedKmh && settings.bikeSpeed == null ? 'Fahrzeit mit dem Tempo aus deinem Profil' : `Fahrzeit mit ${String(speed).replace('.', ',')} km/h bei dieser Routenoption`}
+            />
 
             {weather && (
               <div className="panel" style={{ background: 'var(--bg-soft)', marginTop: 12 }}>

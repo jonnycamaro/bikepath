@@ -128,7 +128,7 @@ export const WAYTYPE_META: Record<string, { label: string; color: string }> = {
   other: { label: 'Undefiniert', color: '#9ca3af' },
 };
 
-interface Leg {
+export interface Leg {
   coords: Coord[];
   surface: string[];
   wayType: string[];
@@ -194,26 +194,58 @@ export function profileQuery(params: Record<string, string | number> = {}): stri
   return Object.entries(params).map(([k, v]) => `&profile:${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`).join('');
 }
 
-async function fetchLeg(a: LngLat, b: LngLat, profile: RoutingProfile, signal?: AbortSignal, extra: Record<string, string | number> = {}): Promise<Leg> {
-  if (!profile.brouter) return freehandLeg(a, b);
-  const pq = profileQuery({ ...(profile.params ?? {}), ...extra });
-  const key = `${profile.brouter}${pq}|${a.map((v) => v.toFixed(6))}|${b.map((v) => v.toFixed(6))}`;
+const sleep = (ms: number, signal?: AbortSignal) =>
+  new Promise<void>((resolve, reject) => {
+    const t = setTimeout(resolve, ms);
+    signal?.addEventListener('abort', () => { clearTimeout(t); reject(new DOMException('Aborted', 'AbortError')); }, { once: true });
+  });
+
+export interface TrackOptions {
+  signal?: AbortSignal;
+  /** extra BRouter profile variables */
+  params?: Record<string, string | number>;
+  /** weighted no-go circles, already in BRouter's `nogos=` syntax */
+  nogos?: string;
+}
+
+/**
+ * One BRouter request through all `points` (two or more). The public server answers
+ * "retry later" when it is busy, so that case is retried with a growing pause.
+ */
+export async function fetchTrack(points: LngLat[], profile: RoutingProfile, opts: TrackOptions = {}): Promise<Leg> {
+  if (!profile.brouter) throw new Error('Freihand kann nicht geroutet werden');
+  const pq = profileQuery({ ...(profile.params ?? {}), ...(opts.params ?? {}) });
+  const lonlats = points.map((p) => `${p[0].toFixed(6)},${p[1].toFixed(6)}`).join('|');
+  const key = `${profile.brouter}${pq}|${lonlats}|${opts.nogos ?? ''}`;
   const hit = legCache.get(key);
   if (hit) return hit;
   const url =
-    `${BROUTER}?lonlats=${a[0].toFixed(6)},${a[1].toFixed(6)}|${b[0].toFixed(6)},${b[1].toFixed(6)}` +
-    `&profile=${profile.brouter}${pq}&alternativeidx=0&format=geojson&timode=3`;
-  const res = await fetch(url, { signal });
-  const text = await res.text();
-  if (!res.ok || !text.trim().startsWith('{')) {
+    `${BROUTER}?lonlats=${lonlats}&profile=${profile.brouter}${pq}` +
+    (opts.nogos ? `&nogos=${opts.nogos}` : '') +
+    `&alternativeidx=0&format=geojson&timode=3`;
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(url, { signal: opts.signal });
+    const text = await res.text();
+    if (res.ok && text.trim().startsWith('{')) {
+      const leg = parseBrouter(JSON.parse(text));
+      if (legCache.size > 300) legCache.clear();
+      legCache.set(key, leg);
+      return leg;
+    }
+    if (/retry later/i.test(text) && attempt < 3) {
+      await sleep(900 * (attempt + 1), opts.signal);
+      continue;
+    }
     throw new Error(text.includes('not mapped') || text.includes('target island')
       ? 'Punkt liegt abseits befahrbarer Wege'
+      : /retry later/i.test(text) ? 'Routing-Server ist ausgelastet – bitte gleich noch einmal versuchen'
       : `Routing fehlgeschlagen (${res.status})`);
   }
-  const leg = parseBrouter(JSON.parse(text));
-  if (legCache.size > 300) legCache.clear();
-  legCache.set(key, leg);
-  return leg;
+}
+
+async function fetchLeg(a: LngLat, b: LngLat, profile: RoutingProfile, signal?: AbortSignal, extra: Record<string, string | number> = {}): Promise<Leg> {
+  if (!profile.brouter) return freehandLeg(a, b);
+  return fetchTrack([a, b], profile, { signal, params: extra });
 }
 
 /** Fill missing elevations (freehand legs) by linear interpolation from neighbours. */

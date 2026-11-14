@@ -42,7 +42,7 @@ React-UI (Tabs, Sheets)  ──  zustand-Store (Planer, Einstellungen, Bibliothe
         │
    session.ts  ── Recorder (Aufzeichnung) + NavigationEngine (Snapping, Ansagen, Off-Route) ── location.ts (GPS / Simulator)
         │
-   lib/: routing (BRouter), instructions, geocode (Photon), pois (Overpass), weather (Open-Meteo),
+   lib/: routing (BRouter), instructions, geocode (Photon), pois/poiTiles (OpenFreeMap-Vektorkacheln), weather (Open-Meteo),
          gpx (GPX/KML), offline (Cache Storage), storage (IndexedDB), speech, wakelock, roundtrip
 ```
 
@@ -63,6 +63,6 @@ Einige Schwellen sind nicht willkürlich gewählt, sondern an etwas Messbares ge
 ## Bekannte Grenzen
 
 - Routing, Suche, POIs und Wetter brauchen Internet. Gespeicherte Routen lassen sich offline navigieren, aber ohne Netz gibt es keine Neuberechnung.
-- Die öffentlichen Server (BRouter, Overpass) sind Gratisdienste ohne Garantie. Bei vielen Nutzern ist ein eigener BRouter-Server (Docker) zu empfehlen.
+- Die öffentlichen Server (BRouter, Photon, OpenFreeMap) sind Gratisdienste ohne Garantie. Bei vielen Nutzern ist ein eigener BRouter-Server (Docker) zu empfehlen.
 - Keine Uhren- oder Garmin-Anbindung, keine Unfallerkennung. Dafür braucht es native Apps.
 - Bei gesperrtem Bildschirm friert die Ortung ein. Siehe Variante B oben.

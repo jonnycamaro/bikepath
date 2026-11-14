@@ -67,7 +67,7 @@ export const OVERLAYS: OverlayDef[] = [
   { id: 'cycleroutes', label: 'Radrouten', description: 'Beschilderte Radfernwege und Netze' },
   { id: 'mtbroutes', label: 'MTB-Routen', description: 'Ausgeschilderte Mountainbike-Strecken' },
   { id: 'hillshade', label: 'Relief', description: 'Schummerung des Geländes' },
-  { id: 'pois', label: 'Rad-POIs', description: 'Trinkwasser, WC, Radläden, Ladestationen, Reparatur' },
+  { id: 'pois', label: 'POIs', description: 'Orte wie Cafés, Supermärkte, Trinkwasser oder WCs' },
 ];
 
 export const TERRAIN_TILES = 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png';

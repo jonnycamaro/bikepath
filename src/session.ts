@@ -2,8 +2,10 @@ import { haversine, snapToLine } from './lib/geo';
 import { location } from './lib/location';
 import { NavigationEngine, type Fix } from './lib/navigation';
 import { Recorder } from './lib/recording';
+import { isLoopRoute } from './lib/roundtrip';
 import { joinReroute, rejoinTarget, reverseRoute, sliceRoute } from './lib/routeOps';
-import { computeRoute, CYCLEPATH_PARAMS, profileById, routeFromTrack, type Route } from './lib/routing';
+import { bikeSpeed, rideSpeed } from './lib/bike';
+import { computeRoute, CYCLEPATH_PARAMS, routeFromTrack, type Route } from './lib/routing';
 import { configureSpeech, speak, unlockSpeech } from './lib/speech';
 import { kvDel, kvGet, kvSet, saveRoute, uid, type SavedRoute } from './lib/storage';
 import { keepAwake } from './lib/wakelock';
@@ -68,11 +70,12 @@ async function reroute(fix: Fix) {
     const cur = engine.route;
     const state = engine.update(fix);
     const profile = cur.profileId === 'freehand' ? 'balanced' : cur.profileId;
-    const speed = st.settings.speedKmh[cur.profileId] ?? profileById(cur.profileId).speedKmh;
+    const speed = rideSpeed(st.settings, cur.profileId);
     const target = baseRoute ?? cur;
     let next: Route | null = null;
 
-    if (st.settings.rerouteMode === 'rejoin' && target.distance > 0) {
+    // a round trip has no stops left to aim for – "direct" would simply lead home
+    if ((st.settings.rerouteMode === 'rejoin' || isLoopRoute(target)) && target.distance > 0) {
       // guide back onto the planned route, then continue along it
       const progress = baseRoute === cur ? engine.progress : 0;
       const join = rejoinTarget(target, fix.lngLat, progress);
@@ -135,7 +138,7 @@ export async function resolveMissedStop(action: 'skip' | 'back') {
     if (rest.length) {
       const st = useStore.getState();
       const profile = cur.profileId === 'freehand' ? 'balanced' : cur.profileId;
-      const speed = st.settings.speedKmh[cur.profileId] ?? profileById(cur.profileId).speedKmh;
+      const speed = rideSpeed(st.settings, cur.profileId);
       rerouting = true;
       push();
       try {
@@ -156,7 +159,7 @@ export async function resolveMissedStop(action: 'skip' | 'back') {
     if (!wp) return;
     const st = useStore.getState();
     const profile = cur.profileId === 'freehand' ? 'balanced' : cur.profileId;
-    const speed = st.settings.speedKmh[cur.profileId] ?? profileById(cur.profileId).speedKmh;
+    const speed = rideSpeed(st.settings, cur.profileId);
     const idx = cur.waypoints.indexOf(wp);
     const rest = cur.waypoints.slice(idx).filter((w) => !skippedWaypoints.has(w.id));
     rerouting = true;
@@ -241,7 +244,7 @@ function startCommon(route: Route | null, guided = true) {
   muted = !st.settings.voice;
   recorder = new Recorder({ autoPause: st.settings.autoPause });
   recorder.start();
-  const speed = route ? st.settings.speedKmh[route.profileId] ?? profileById(route.profileId).speedKmh : 18;
+  const speed = route ? rideSpeed(st.settings, route.profileId) : bikeSpeed(st.settings);
   engine = route
     ? new NavigationEngine(route, { speedKmh: speed, guided, climbAnnouncements: st.settings.climbAnnouncements })
     : null;
@@ -257,6 +260,8 @@ export interface StartNavOptions {
   guided?: boolean;
   /** where to join the route: its start, the nearest point, or reversed */
   entry?: 'start' | 'nearest' | 'reverse';
+  /** ride the route with simulated GPS instead of the real position (demo / testing) */
+  simulate?: boolean;
 }
 
 export function startNavigation(route: Route, opts: StartNavOptions = {}) {
@@ -269,6 +274,7 @@ export function startNavigation(route: Route, opts: StartNavOptions = {}) {
     if (snap && snap.along > 50 && route.distance - snap.along > 100) r = sliceRoute(route, snap.along);
   }
   startCommon(r, opts.guided ?? true);
+  if (opts.simulate) simulateCurrent(4);
 }
 
 /** Entry options for the pre-navigation dialog. */

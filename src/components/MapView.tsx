@@ -3,7 +3,9 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { useEffect, useRef, useState } from 'react';
 import { snapToLine, type LngLat } from '../lib/geo';
 import { styleById, styleFor, TERRAIN_TILES } from '../lib/mapStyles';
-import { fetchPois, POI_META, type Poi } from '../lib/pois';
+import { cachedPois, loadPoiTiles, MAX_POI_TILES, poiTileTemplate, tilesFor } from '../lib/poiTiles';
+import { addPoiLayers, poiLayerIds, poiPlace, setPois, setPoiVisible, zoomIntoCluster } from '../lib/poiLayers';
+import type { Poi } from '../lib/pois';
 import { colouredLines } from '../lib/routeStyle';
 import type { Route } from '../lib/routing';
 import { useStore } from '../store';
@@ -44,7 +46,6 @@ function addAppLayers(map: MLMap) {
   src('nav-route');
   src('track');
   src('drag-ghost');
-  src('pois');
   const casing = (id: string, source: string, width = 9) => {
     if (!map.getLayer(id))
       map.addLayer({ id, type: 'line', source, layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#ffffff', 'line-width': ['interpolate', ['linear'], ['zoom'], 8, width * 0.55, 16, width * 1.4] } });
@@ -62,17 +63,9 @@ function addAppLayers(map: MLMap) {
     map.addLayer({ id: 'track-line', type: 'line', source: 'track', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#e5383b', 'line-width': ['interpolate', ['linear'], ['zoom'], 8, 2.5, 16, 6] } });
   if (!map.getLayer('drag-ghost'))
     map.addLayer({ id: 'drag-ghost', type: 'line', source: 'drag-ghost', paint: { 'line-color': '#0b6bd6', 'line-width': 3, 'line-dasharray': [2, 2] } });
-  if (!map.getLayer('pois-circle'))
-    map.addLayer({
-      id: 'pois-circle', type: 'circle', source: 'pois', minzoom: 11,
-      paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 5, 16, 11], 'circle-color': ['get', 'color'], 'circle-stroke-color': '#fff', 'circle-stroke-width': 2 },
-    });
-  if (!map.getLayer('pois-label'))
-    map.addLayer({
-      id: 'pois-label', type: 'symbol', source: 'pois', minzoom: 14,
-      layout: { 'text-field': ['get', 'label'], 'text-font': ['Noto Sans Regular'], 'text-size': 11, 'text-offset': [0, 1.3], 'text-anchor': 'top', 'text-optional': true },
-      paint: { 'text-color': '#0a2540', 'text-halo-color': '#fff', 'text-halo-width': 1.5 },
-    });
+  // POIs on top, clustered; shown only when the "POIs" layer is switched on
+  const st = useStore.getState().settings;
+  addPoiLayers(map, 'pois', !!styleById(st.mapStyle).dark, st.overlays.includes('pois'));
 }
 
 function makeWpEl(kind: 'start' | 'via' | 'end', label: string) {
@@ -93,6 +86,7 @@ export default function MapView() {
   const settings = useStore((s) => s.settings);
   const tab = useStore((s) => s.tab);
   const waypoints = useStore((s) => s.waypoints);
+  const loop = useStore((s) => !!s.loop);
   const route = useStore((s) => s.route);
   const preview = useStore((s) => s.preview);
   const fix = useStore((s) => s.fix);
@@ -127,18 +121,18 @@ export default function MapView() {
     map.on('click', (e) => {
       if (dragging.current) return;
       const s = useStore.getState();
+      // POI layer: a circle zooms in, a place is picked (planner) or shown (map)
+      const ids = poiLayerIds('pois');
+      if (s.settings.overlays.includes('pois') && map.getLayer(ids.cluster)) {
+        const [f] = map.queryRenderedFeatures(e.point, { layers: [ids.cluster, ids.point] });
+        if (f?.layer.id === ids.cluster) return zoomIntoCluster(map, 'pois', f);
+        if (f && s.tab === 'plan') return s.addWaypoint(poiPlace(f).lngLat, poiPlace(f).name);
+        if (f && s.tab === 'map') return s.showPlace(poiPlace(f));
+      }
       if (s.tab === 'plan') {
         const hit = map.queryRenderedFeatures(e.point, { layers: ['route-line'] });
-        if (hit.length && s.waypoints.length >= 2) return; // handled by drag logic
-        s.addWaypoint([e.lngLat.lng, e.lngLat.lat]);
-      } else if (s.tab === 'map') {
-        const poi = map.queryRenderedFeatures(e.point, { layers: ['pois-circle'] })[0];
-        if (poi) {
-          new maplibregl.Popup({ closeButton: false, offset: 10 })
-            .setLngLat(e.lngLat)
-            .setHTML(`<b>${POI_META[poi.properties.type]?.label ?? ''}</b>${poi.properties.name ? '<br>' + escapeHtml(poi.properties.name) : ''}`)
-            .addTo(map);
-        }
+        if (hit.length && s.waypoints.length >= 2 && !s.loop) return; // handled by drag logic
+        s.addWaypoint([e.lngLat.lng, e.lngLat.lat]); // in a round trip: a stop on the way
       }
     });
     // Long-press / right-click: plan a route to here
@@ -202,32 +196,30 @@ export default function MapView() {
     });
     map.on('mouseleave', 'route-line', () => (map.getCanvas().style.cursor = ''));
 
-    // POIs
-    const loadPois = () => {
+    // POIs, read from the vector map tiles of zoom 14 (they carry every place)
+    const showPois = (pois: Poi[]) => setPois(map, 'pois', pois, useStore.getState().settings.poiTypes);
+    const loadPois = async () => {
       const s = useStore.getState();
       if (!s.settings.overlays.includes('pois') || map.getZoom() < 12) return;
       poisAbort.current?.abort();
+      const b = map.getBounds();
+      const tiles = tilesFor([b.getWest(), b.getSouth(), b.getEast(), b.getNorth()]);
+      showPois(cachedPois(tiles));
+      if (tiles.length > MAX_POI_TILES) return; // zoomed out: only what is loaded already
       const ctrl = new AbortController();
       poisAbort.current = ctrl;
-      const b = map.getBounds();
-      fetchPois([b.getWest(), b.getSouth(), b.getEast(), b.getNorth()], ctrl.signal)
-        .then((pois: Poi[]) => {
-          (map.getSource('pois') as GeoJSONSource | undefined)?.setData({
-            type: 'FeatureCollection',
-            features: pois.map((p) => ({
-              type: 'Feature',
-              properties: { type: p.type, name: p.name ?? '', color: POI_META[p.type].color, label: p.name ?? POI_META[p.type].label },
-              geometry: { type: 'Point', coordinates: [p.lon, p.lat] },
-            })),
-          });
-        })
-        .catch((e) => {
-          if (ctrl.signal.aborted) return;
-          if (Date.now() - poiErrorAt > 60000) {
-            poiErrorAt = Date.now();
-            useStore.getState().toastMsg(`Rad-POIs gerade nicht verfügbar (${(e as Error).message || 'Server ausgelastet'})`);
-          }
+      try {
+        const template = await poiTileTemplate();
+        let n = 0;
+        await loadPoiTiles(template, tiles, ctrl.signal, () => {
+          if (++n % 8 === 0 && !ctrl.signal.aborted) showPois(cachedPois(tiles));
         });
+        if (!ctrl.signal.aborted) showPois(cachedPois(tiles));
+      } catch (e) {
+        if (ctrl.signal.aborted || Date.now() - poiErrorAt < 60000) return;
+        poiErrorAt = Date.now();
+        useStore.getState().toastMsg(`Rad-POIs gerade nicht verfügbar (${(e as Error).message || 'keine Verbindung'})`);
+      }
     };
     let poiErrorAt = 0;
     let poiTimer: ReturnType<typeof setTimeout>;
@@ -263,8 +255,7 @@ export default function MapView() {
     vis('mtbroutes', settings.overlays.includes('mtbroutes'));
     vis('hillshade', settings.overlays.includes('hillshade'));
     const poisOn = settings.overlays.includes('pois');
-    vis('pois-circle', poisOn);
-    vis('pois-label', poisOn);
+    setPoiVisible(map, 'pois', poisOn);
     if (poisOn) (map as any).__loadPois?.();
     if (settings.terrain3d) {
       map.setTerrain({ source: 'dem', exaggeration: 1.4 });
@@ -274,6 +265,12 @@ export default function MapView() {
       if (map.getPitch() > 0 && !useStore.getState().session) map.easeTo({ pitch: 0, duration: 400 });
     }
   }, [loaded, settings.overlays, settings.terrain3d]);
+
+  // POI categories changed
+  useEffect(() => {
+    const map = mapRef.current;
+    if (loaded && styleReady(map) && settings.overlays.includes('pois')) (map as any).__loadPois?.();
+  }, [settings.poiTypes.join()]);
 
   // planned route
   useEffect(() => {
@@ -320,7 +317,8 @@ export default function MapView() {
     }
     if (!visible) return;
     waypoints.forEach((w, i) => {
-      const kind = i === 0 ? 'start' : i === waypoints.length - 1 && waypoints.length > 1 ? 'end' : 'via';
+      // a round trip ends at its start, so everything after the first point is a stop
+      const kind = i === 0 ? 'start' : i === waypoints.length - 1 && waypoints.length > 1 && !loop ? 'end' : 'via';
       const label = kind === 'start' ? 'A' : kind === 'end' ? 'B' : String(i);
       let m = markers.current.get(w.id);
       if (!m) {
@@ -336,7 +334,7 @@ export default function MapView() {
           // tapping a via point removes it (start/end are removed in the sheet)
           const st = useStore.getState();
           const idx = st.waypoints.findIndex((x) => x.id === w.id);
-          if (idx > 0 && idx < st.waypoints.length - 1) st.removeWaypoint(w.id);
+          if (idx > 0 && (idx < st.waypoints.length - 1 || st.loop)) st.removeWaypoint(w.id);
         });
         markers.current.set(w.id, m);
       } else {
@@ -346,7 +344,7 @@ export default function MapView() {
         el.textContent = label;
       }
     });
-  }, [waypoints, tab, session]);
+  }, [waypoints, tab, session, loop]);
 
   // own location marker + follow
   useEffect(() => {
@@ -393,8 +391,4 @@ export default function MapView() {
   }, [focus]);
 
   return <div id="map" ref={container} data-testid="map" />;
-}
-
-function escapeHtml(s: string) {
-  return s.replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' })[c]!);
 }

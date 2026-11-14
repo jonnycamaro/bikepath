@@ -1,17 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import fixture from './fixtures/brouter-munich.json';
-import { bearing, cumulative, destination, elevationGain, formatDistance, haversine, pointAlong, snapToLine, type Coord } from '../src/lib/geo';
+import { BIKE_TYPES, bikeSpeed, rideSpeed } from '../src/lib/bike';
+import { angleDiff, bearing, cumulative, destination, elevationGain, formatDistance, haversine, pointAlong, snapToLine, type Coord } from '../src/lib/geo';
 import { buildInstructions, maneuverFromAngle, spokenInstruction } from '../src/lib/instructions';
 import { NavigationEngine, type Fix } from '../src/lib/navigation';
 import { Recorder } from '../src/lib/recording';
 import { assembleRoute, estimateDuration, parseBrouter, profileById, routeFromTrack, surfaceOf, wayTypeOf } from '../src/lib/routing';
 import { parseTrackFile, toGPX, toKML, simplifyByDistance } from '../src/lib/gpx';
-import { roundTripWaypoints } from '../src/lib/roundtrip';
+import { cleanTrack, computeRoundTrip, cutTurnHook, isLoopRoute, LoopProblem, loopSkeleton, overlapShare, reuseNogos } from '../src/lib/roundtrip';
 import { countTiles, lat2tile, lon2tile, tilesInBbox } from '../src/lib/offline';
 import { parseCoordinates, parsePhoton } from '../src/lib/geocode';
 import { colouredLines, grades } from '../src/lib/routeStyle';
 import { headwindShare } from '../src/lib/weather';
-import { classifyPoi } from '../src/lib/pois';
+import { classifyTilePoi } from '../src/lib/pois';
+import { decodePoiTile, tilesFor } from '../src/lib/poiTiles';
+import { googleMapsUrl, tripadvisorUrl } from '../src/lib/externalLinks';
 
 const munich = () => {
   const leg = parseBrouter(fixture);
@@ -301,19 +304,197 @@ describe('GPX / KML', () => {
 });
 
 describe('round trip', () => {
-  it('creates a closed loop of plausible size', () => {
-    const start: [number, number] = [11.5755, 48.1372];
-    const pts = roundTripWaypoints(start, 30000, 90);
-    expect(pts[0]).toEqual(start);
-    expect(pts[pts.length - 1]).toEqual(start);
-    let len = 0;
-    for (let i = 1; i < pts.length; i++) len += haversine(pts[i - 1], pts[i]);
-    expect(len).toBeGreaterThan(17000);
-    expect(len).toBeLessThan(28000);
-    // first via point lies roughly east
-    const b = bearing(start, pts[1]);
-    expect(b).toBeGreaterThan(20);
-    expect(b).toBeLessThan(170);
+  const start: [number, number] = [11.5755, 48.1372];
+  // a square block of streets, ~110 m per side
+  const A: [number, number] = [11.0, 48.0], B: [number, number] = [11.0015, 48.0], C: [number, number] = [11.0015, 48.001], D: [number, number] = [11.0, 48.001];
+  const legOf = (pts: [number, number][], hints: number[][] = []) => ({ coords: pts.map((p) => [p[0], p[1], 500] as [number, number, number]), surface: pts.map(() => 'paved'), wayType: pts.map(() => 'road'), hints });
+
+  it('heads for a turning point in the wanted direction instead of drawing a circle', () => {
+    const plain = loopSkeleton({ start, distance: 30000, direction: 90, variant: 0 });
+    expect(plain.via).toHaveLength(0);
+    expect(haversine(start, plain.turn)).toBeGreaterThan(9000);
+    expect(haversine(start, plain.turn)).toBeLessThan(15000);
+    expect(Math.abs(bearing(start, plain.turn) - 90)).toBeLessThan(1);
+    // riding the other way round keeps the turning point; other variants bend the way out or turn the heading
+    expect(loopSkeleton({ start, distance: 30000, direction: 90, variant: 0, reversed: true }).turn).toEqual(plain.turn);
+    const bent = loopSkeleton({ start, distance: 30000, direction: 90, variant: 1 });
+    expect(bent.via).toHaveLength(1);
+    expect(bearing(start, bent.via[0])).toBeGreaterThan(95);
+    expect(haversine(start, bent.turn)).toBeLessThan(haversine(start, plain.turn));
+    const turned = loopSkeleton({ start, distance: 30000, direction: 90, variant: 3 });
+    expect(Math.abs(bearing(start, turned.turn) - 90)).toBeGreaterThan(15);
+  });
+
+  it('cuts the hook the way back makes right after the turning point', () => {
+    // out along A -> B -> C, back leaves over D, crosses the way out at B again and goes home
+    const E: [number, number] = [11.0015, 47.999];
+    const leg = legOf([A, B, C, D, [11.0008, 48.0005], B, E, A], [[1, 0, 0, 0, 90], [3, 0, 0, 0, -90]]);
+    const cut = cutTurnHook(leg, 2, 2000);
+    expect(cut.coords.map((c) => [c[0], c[1]])).toEqual([A, B, E, A]);
+    expect(cut.hints.every((h) => h[0] <= 3)).toBe(true);
+    expect(cutTurnHook(leg, 2, 100)).toBe(leg); // too long to be a hook
+  });
+
+  it('cuts a dead-end spur out of a track and fixes the turn hint', () => {
+    const tip: [number, number] = [11.003, 48.0];
+    const mid: [number, number] = [11.0022, 48.0];
+    // A → B, into the dead end and back, then on to C
+    const leg = legOf([A, B, mid, tip, mid, B, C], [[1, 1, 0, 0, 0], [3, 10, 0, 0, 180], [5, 5, 0, 0, 90]]);
+    const clean = cleanTrack(leg);
+    expect(clean.coords.map((c) => [c[0], c[1]])).toEqual([A, B, C]);
+    expect(clean.hints).toHaveLength(1);
+    expect(clean.hints[0][0]).toBe(1);
+    expect(clean.hints[0][4]).toBeLessThan(-60); // left turn at B, derived from the geometry
+  });
+
+  it('cuts a short detour loop but keeps the round trip itself', () => {
+    const far: [number, number] = [11.02, 48.0];
+    const round = cleanTrack(legOf([A, B, C, D, A]));
+    expect(round.coords).toHaveLength(5);
+    const detour = cleanTrack(legOf([far, A, B, C, D, A, [10.99, 48.0]]));
+    expect(detour.coords.map((c) => [c[0], c[1]])).toEqual([far, A, [10.99, 48.0]]);
+  });
+
+  it('measures how much of a track is ridden twice', () => {
+    const line: [number, number][] = Array.from({ length: 41 }, (_, i) => [11 + i * 0.0005, 48]);
+    expect(overlapShare(line)).toBe(0);
+    expect(overlapShare([...line, ...line.slice().reverse()])).toBeGreaterThan(0.7);
+  });
+
+  it('describes the way out as weighted no-go circles', () => {
+    const line: [number, number][] = Array.from({ length: 200 }, (_, i) => [11 + i * 0.0005, 48]);
+    const parts = reuseNogos(line, 8).split('|');
+    expect(parts.length).toBeGreaterThan(20);
+    expect(parts.length).toBeLessThanOrEqual(225);
+    const [lon, lat, radius, weight] = parts[0].split(',').map(Number);
+    expect(lon).toBeCloseTo(11, 4);
+    expect(lat).toBeCloseTo(48, 4);
+    expect(radius).toBeGreaterThanOrEqual(28);
+    expect(weight).toBe(8);
+  });
+
+  it('moves the turning point to fit the length and keeps the way back off the way out', async () => {
+    const calls: { points: number; nogos: boolean }[] = [];
+    // a "router" whose roads are straight lines; with no-gos it swings out to one side
+    const track = async (pts: [number, number][], _p: unknown, o: { nogos?: string } = {}) => {
+      calls.push({ points: pts.length, nogos: !!o.nogos });
+      const dense: [number, number][] = [];
+      pts.forEach((p, i) => {
+        if (i === 0) return dense.push(p);
+        const a = pts[i - 1];
+        for (let k = 1; k <= 20; k++) {
+          const bow = o.nogos ? Math.sin((Math.PI * k) / 20) * 0.02 : 0;
+          dense.push([a[0] + ((p[0] - a[0]) * k) / 20 + bow, a[1] + ((p[1] - a[1]) * k) / 20]);
+        }
+      });
+      return legOf(dense);
+    };
+    const spec = { start, distance: 30000, direction: 0, variant: 0 };
+    const route = await computeRoundTrip(spec, 'balanced', { track: track as never });
+    expect(calls[0]).toEqual({ points: 2, nogos: false }); // way out: start -> turning point, nothing in between
+    expect(calls[calls.length - 1].nogos).toBe(true); // way back avoids the way out
+    expect(Math.abs(route.distance - 30000)).toBeLessThan(2400);
+    expect(isLoopRoute(route)).toBe(true);
+    expect(route.waypoints).toHaveLength(2);
+    expect(route.instructions.filter((i) => i.maneuver === 'waypoint')).toHaveLength(0);
+    // farthest point lies in the wanted direction
+    const far = route.coords.reduce((m, c) => (haversine(start, c) > haversine(start, m) ? c : m), route.coords[0]);
+    expect(Math.abs(angleDiff(0, bearing(start, far)))).toBeLessThan(20);
+
+    // the other way round: the penalised half is ridden first
+    calls.length = 0;
+    const rev = await computeRoundTrip({ ...spec, reversed: true }, 'balanced', { track: track as never });
+    expect(isLoopRoute(rev)).toBe(true);
+    expect(Math.abs(rev.coords[10][0] - start[0])).toBeGreaterThan(0.001);
+  });
+
+  // roads are straight lines; the half that has to avoid the other one bows out to the side
+  const fakeTrack = (calls: [number, number][][] = []) => async (pts: [number, number][], _p: unknown, o: { nogos?: string } = {}) => {
+    calls.push(pts);
+    const dense: [number, number][] = [pts[0]];
+    for (let k = 1; k <= 20; k++) {
+      const bow = o.nogos ? Math.sin((Math.PI * k) / 20) * 0.01 : 0;
+      dense.push([pts[0][0] + ((pts[1][0] - pts[0][0]) * k) / 20 + bow, pts[0][1] + ((pts[1][1] - pts[0][1]) * k) / 20]);
+    }
+    return legOf(dense);
+  };
+
+  it('plans by riding time when a duration is given', async () => {
+    // 90 min at 20 km/h: about 30 km
+    const route = await computeRoundTrip({ start, distance: 0, duration: 5400, direction: 0, variant: 0 }, 'balanced', { track: fakeTrack() as never, speedKmh: 20 });
+    expect(Math.abs(route.duration - 5400)).toBeLessThan(5400 * 0.09);
+    expect(Math.abs(route.distance - 30000)).toBeLessThan(3000);
+    // the same time on a slower bike gives a shorter tour
+    const slow = await computeRoundTrip({ start, distance: 0, duration: 5400, direction: 0, variant: 0 }, 'balanced', { track: fakeTrack() as never, speedKmh: 12 });
+    expect(slow.distance).toBeLessThan(route.distance * 0.7);
+  });
+
+  it('sorts stops along the heading and turns at the farthest one', () => {
+    const near = { id: 'near', lngLat: destination(start, 4000, 55) };
+    const farStop = { id: 'far', lngLat: destination(start, 11000, 95) };
+    const other = { id: 'other', lngLat: destination(start, 6000, 130) };
+    const sk = loopSkeleton({ start, distance: 30000, direction: 90, variant: 0, stops: [farStop, other, near] });
+    expect(sk.turnStop?.id).toBe('far');
+    expect(sk.via).toHaveLength(0);
+    // the two remaining stops lie on opposite sides of the heading: one on the way out, one on the way back
+    expect([...sk.out, ...sk.back].map((p) => p.id).sort()).toEqual(['near', 'other']);
+    expect(sk.out).toHaveLength(1);
+    expect(sk.back).toHaveLength(1);
+    // a stop close to the start does not become the turning point
+    const short = loopSkeleton({ start, distance: 30000, direction: 90, variant: 0, stops: [near] });
+    expect(short.turnStop).toBeUndefined();
+    expect(short.out.map((p) => p.id)).toEqual(['near']);
+  });
+
+  it('leads the round trip past the stops and names them as waypoints', async () => {
+    const stop = { id: 's1', lngLat: destination(start, 5000, 20), name: 'Café' };
+    const calls: [number, number][][] = [];
+    const route = await computeRoundTrip({ start, distance: 30000, direction: 0, variant: 0, stops: [stop] }, 'balanced', { track: fakeTrack(calls) as never });
+    expect(route.waypoints.map((w) => w.id)).toEqual(['loop-start', 's1', 'loop-end']);
+    expect(route.coords.some((c) => haversine(c, stop.lngLat) < 30)).toBe(true);
+    expect(route.instructions.filter((i) => i.maneuver === 'waypoint')).toHaveLength(1);
+    expect(Math.abs(route.distance - 30000)).toBeLessThan(3000);
+    expect(isLoopRoute(route)).toBe(true);
+    // the other way round the stop is still on the tour
+    const rev = await computeRoundTrip({ start, distance: 30000, direction: 0, variant: 0, reversed: true, stops: [stop] }, 'balanced', { track: fakeTrack() as never });
+    expect(rev.coords.some((c) => haversine(c, stop.lngLat) < 30)).toBe(true);
+  });
+
+  it('says what to change when a stop is too far away or lies the other way', async () => {
+    const farStop = { lngLat: destination(start, 20000, 10), name: 'Starnberg, Bayern' };
+    const tooShort = await computeRoundTrip({ start, distance: 20000, direction: 0, variant: 0, stops: [farStop] }, 'balanced', { track: fakeTrack() as never }).catch((e) => e);
+    expect(tooShort).toBeInstanceOf(LoopProblem);
+    expect(tooShort.kind).toBe('too-short');
+    expect(tooShort.fix.distance).toBeGreaterThan(40000);
+    expect(tooShort.message).toMatch(/mindestens rund \d+ km/);
+    // with the suggested length it works
+    const ok = await computeRoundTrip({ start, distance: Math.ceil(tooShort.fix.distance / 5000) * 5000, direction: 0, variant: 0, stops: [farStop] }, 'balanced', { track: fakeTrack() as never });
+    expect(isLoopRoute(ok)).toBe(true);
+
+    // time-based: the suggestion is a riding time
+    const tooQuick = await computeRoundTrip({ start, distance: 0, duration: 3600, direction: 0, variant: 0, stops: [farStop] }, 'balanced', { track: fakeTrack() as never, speedKmh: 20 }).catch((e) => e);
+    expect(tooQuick.kind).toBe('too-short');
+    expect(tooQuick.fix.duration).toBeGreaterThan(7000);
+    expect(tooQuick.message).toMatch(/dauert die Rundtour mindestens/);
+
+    const behind = { lngLat: destination(start, 6000, 180), name: 'Sendling' };
+    const wrongWay = await computeRoundTrip({ start, distance: 30000, direction: 0, variant: 0, stops: [behind] }, 'balanced', { track: fakeTrack() as never }).catch((e) => e);
+    expect(wrongWay).toBeInstanceOf(LoopProblem);
+    expect(wrongWay.kind).toBe('direction');
+    expect(wrongWay.fix.direction).toBe(180);
+    expect(wrongWay.message).toContain('„Sendling“ liegt im Süden');
+    const turned = await computeRoundTrip({ start, distance: 30000, direction: wrongWay.fix.direction, variant: 0, stops: [behind] }, 'balanced', { track: fakeTrack() as never });
+    expect(turned.coords.some((c) => haversine(c, behind.lngLat) < 30)).toBe(true);
+  });
+});
+
+describe('bike', () => {
+  it('derives the pace from the bike type, an own tempo and the routing option', () => {
+    expect(rideSpeed({}, 'balanced')).toBe(18); // trekking bike by default
+    expect(rideSpeed({ bikeType: 'road' }, 'balanced')).toBe(26);
+    expect(rideSpeed({ bikeType: 'road', bikeSpeed: 30 }, 'balanced')).toBe(30);
+    expect(rideSpeed({ bikeType: 'mtb' }, 'mtb')).toBeLessThan(bikeSpeed({ bikeType: 'mtb' }));
+    expect(BIKE_TYPES.map((b) => b.id)).toContain('ebike');
   });
 });
 
@@ -349,9 +530,25 @@ describe('misc', () => {
     expect(w.head).toBeCloseTo(0.5);
     expect(w.tail).toBeCloseTo(0.5);
   });
-  it('classifies POIs', () => {
-    expect(classifyPoi({ amenity: 'drinking_water' })).toBe('water');
-    expect(classifyPoi({ shop: 'bicycle' })).toBe('bikeshop');
-    expect(classifyPoi({ amenity: 'bench' })).toBeNull();
+  it('finds the map tiles that carry the POIs', () => {
+    // zoom-14 tiles of a small box in Hamburg: 2 × 2
+    expect(tilesFor([9.99, 53.55, 10.01, 53.555])).toEqual([[8646, 5294], [8646, 5295], [8647, 5294], [8647, 5295]]);
+    expect(decodePoiTile(new Uint8Array(0), 0, 0)).toEqual([]);
+  });
+  it('builds links to Google Maps and Tripadvisor', () => {
+    expect(googleMapsUrl('Asia Pho&Co', [7.4572, 53.2606], 'Leer')).toBe('https://www.google.com/maps/search/?api=1&query=Asia%20Pho%26Co%2C%20Leer');
+    expect(googleMapsUrl(undefined, [7.4572, 53.2606])).toBe('https://www.google.com/maps/search/?api=1&query=53.260600%2C7.457200');
+    expect(tripadvisorUrl('Eiscafé Milano', 'food', 'Leer')).toBe('https://www.tripadvisor.de/Search?q=Eisca' + 'f%C3%A9%20Milano%20Leer');
+    expect(tripadvisorUrl('WC', 'toilets', 'Leer')).toBeNull();
+    expect(tripadvisorUrl(undefined, 'restaurant')).toBeNull();
+  });
+  it('sorts places from the map tiles into the POI map categories', () => {
+    expect(classifyTilePoi('restaurant', 'restaurant')).toBe('restaurant');
+    expect(classifyTilePoi('beer', 'biergarten')).toBe('food');
+    expect(classifyTilePoi('beer', 'pub')).toBeNull();
+    expect(classifyTilePoi('grocery', 'supermarket')).toBe('shop');
+    expect(classifyTilePoi('attraction', 'viewpoint')).toBe('viewpoint');
+    expect(classifyTilePoi('fuel', 'charging_station')).toBeNull();
+    expect(classifyTilePoi('railway', 'tram_stop')).toBeNull();
   });
 });

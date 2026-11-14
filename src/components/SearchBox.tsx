@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { searchPlaces, type Place } from '../lib/geocode';
 import { formatDistance, haversine } from '../lib/geo';
 import { useStore } from '../store';
-import { IconClose, IconLocate, IconSearch } from './icons';
+import { IconClose, IconLocate, IconPoi, IconSearch } from './icons';
+import PoiPicker from './PoiPicker';
 
 interface Props {
   placeholder?: string;
@@ -10,9 +11,12 @@ interface Props {
   autoFocus?: boolean;
   showMyLocation?: boolean;
   onFocusChange?: (f: boolean) => void;
+  /** show a POI button that opens a map of places to pick from; the value is that map's title */
+  poiTitle?: string;
 }
 
-export default function SearchBox({ placeholder = 'Ort oder Adresse suchen', onSelect, autoFocus, showMyLocation, onFocusChange }: Props) {
+export default function SearchBox({ placeholder = 'Ort oder Adresse suchen', onSelect, autoFocus, showMyLocation, onFocusChange, poiTitle }: Props) {
+  const [poiOpen, setPoiOpen] = useState(false);
   const [q, setQ] = useState('');
   const [res, setRes] = useState<Place[]>([]);
   const [busy, setBusy] = useState(false);
@@ -78,7 +82,22 @@ export default function SearchBox({ placeholder = 'Ort oder Adresse suchen', onS
             <IconClose size={18} />
           </button>
         )}
+        {poiTitle && (
+          <button className="poi-open" onClick={() => setPoiOpen(true)} aria-label="Orte auf der Karte (POIs)" title="Orte auf der Karte" data-testid="poi-open">
+            <IconPoi size={22} />
+          </button>
+        )}
       </div>
+      {poiOpen && poiTitle && (
+        <PoiPicker
+          title={poiTitle}
+          onClose={() => setPoiOpen(false)}
+          onPick={(p) => {
+            setPoiOpen(false);
+            onSelect(p);
+          }}
+        />
+      )}
       {(res.length > 0 || err || (focused && showMyLocation && fix)) && (
         <div className="results">
           {focused && showMyLocation && fix && !q && (

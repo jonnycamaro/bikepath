@@ -42,6 +42,8 @@ export const IconCloud = (p: P) => <S {...p}><path d="M7 18a5 5 0 1 1 .9-9.9A6 6
 export const IconMountain = (p: P) => <S {...p}><path d="m3 20 6-11 4 6 2-3 6 8Z" /></S>;
 export const IconClock = (p: P) => <S {...p}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></S>;
 export const IconRuler = (p: P) => <S {...p}><path d="M3 17 17 3l4 4L7 21Z" /><path d="m7 13 2 2M10 10l2 2M13 7l2 2" /></S>;
+export const IconMapPin = (p: P) => <S {...p}><path d="M12 21s-6.5-6.2-6.5-11a6.5 6.5 0 0 1 13 0c0 4.8-6.5 11-6.5 11Z" /><circle cx="12" cy="10" r="2.4" /></S>;
+export const IconMinus = (p: P) => <S {...p}><path d="M5 12h14" /></S>;
 export const IconPlus = (p: P) => <S {...p}><path d="M12 5v14M5 12h14" /></S>;
 export const IconChevron = (p: P) => <S {...p}><path d="m9 6 6 6-6 6" /></S>;
 export const IconUp = (p: P) => <S {...p}><path d="m6 15 6-6 6 6" /></S>;
@@ -53,6 +55,12 @@ export const IconCompass = (p: P) => <S {...p}><circle cx="12" cy="12" r="9" /><
 export const Icon3D = (p: P) => <S {...p}><path d="M12 3 4 7.5v9L12 21l8-4.5v-9Z" /><path d="M4 7.5 12 12l8-4.5M12 12v9" /></S>;
 export const IconOffline = (p: P) => <S {...p}><path d="M12 3v10M8 9l4 4 4-4" /><path d="M5 15v4h14v-4" /></S>;
 export const IconFlag = (p: P) => <S {...p}><path d="M5 21V4h11l-2 4 2 4H5" /></S>;
+/** map pin with a star: points of interest */
+export const IconPoi = (p: P) => <S {...p}><path d="M12 22s-7-6.2-7-12a7 7 0 0 1 14 0c0 5.8-7 12-7 12Z" /><path d="m12 6.6 1.1 2.2 2.4.3-1.75 1.7.4 2.4L12 12.1l-2.15 1.1.4-2.4L8.5 9.1l2.4-.3Z" /></S>;
+export const IconExternal = (p: P) => <S {...p}><path d="M14 4h6v6M20 4l-9 9" /><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" /></S>;
+export const IconFilter = (p: P) => <S {...p}><path d="M4 6h16M7 12h10M10 18h4" /></S>;
+/** route from a start dot to a destination pin, with a bend for the stops in between */
+export const IconAtoB = (p: P) => <S {...p}><circle cx="5.5" cy="18.5" r="2.5" /><path d="M8 18.5h6.5a3.5 3.5 0 0 0 0-7h-5a3.5 3.5 0 0 1 0-7H14" /><path d="M18.5 9.5s-3-3.2-3-5.3a3 3 0 0 1 6 0c0 2.1-3 5.3-3 5.3Z" /></S>;
 export const IconHome = (p: P) => <S {...p}><path d="m3 11 9-7 9 7" /><path d="M5 10v10h14V10" /><path d="M10 20v-6h4v6" /></S>;
 export const IconWork = (p: P) => <S {...p}><rect x="3" y="7" width="18" height="13" rx="2" /><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M3 12h18" /></S>;
 export const IconSim = (p: P) => <S {...p}><path d="M5 3v18l15-9Z" /><path d="M2 12h3" /></S>;
@@ -87,3 +95,36 @@ export function ManeuverIcon({ m, size = 48, exit }: { m: Maneuver; size?: numbe
     </svg>
   );
 }
+
+// Routing profile icons, keyed by RoutingProfile.icon. Drawn white on a coloured disc
+// (see ProfileBadge) so each option is recognisable at a glance in the picker.
+const PROFILE_GLYPHS: Record<string, React.ReactNode> = {
+  balanced: <><path d="M12 4v16M6 20h12" /><path d="M4 8h16" /><path d="m4 8-2 5h4ZM20 8l-2 5h4Z" /></>,
+  fast: <><path d="M13 3 5 13h6l-1 8 8-10h-6Z" /></>,
+  shield: <><path d="M12 3 5 6v5c0 4.5 3 8 7 10 4-2 7-5.5 7-10V6Z" /><path d="m9 12 2 2 4-4" /></>,
+  road: <><path d="M8 3 5 21M16 3l3 18" /><path d="M12 4v3M12 11v3M12 18v2" /></>,
+  smooth: <><path d="M3 15c3-4 6-4 9 0s6 4 9 0" /><path d="M3 9c3-4 6-4 9 0s6 4 9 0" /></>,
+  gravel: <><circle cx="6" cy="17" r="2" /><circle cx="13" cy="15" r="2.5" /><circle cx="19" cy="18" r="1.5" /><path d="M3 21h18" /><path d="m4 10 5-6 4 5 3-3 5 5" /></>,
+  mtb: <><path d="m3 20 6-11 4 6 2-3 6 8Z" /><path d="m9 9 1.5 3" /></>,
+  ebike: <><rect x="3" y="7" width="16" height="10" rx="2" /><path d="M21 10v4" /><path d="m12 9-3 3.5h4L10 16" /></>,
+  short: <><circle cx="5" cy="19" r="2" /><circle cx="19" cy="5" r="2" /><path d="M6.5 17.5 17.5 6.5" /></>,
+  pen: <><path d="M3 21c3-1 5-6 9-6s4 4 9 2" /><path d="m14 4 6 6-8 3 2-9Z" /></>,
+  // bike types (see lib/bike.ts)
+  city: <><circle cx="5.5" cy="17" r="3.5" /><circle cx="18.5" cy="17" r="3.5" /><path d="M5.5 17 9 9.5h5l4.5 7.5M9 9.5V7M7 7h4M14 9.5l-1-3.5h3" /></>,
+  trekking: <><circle cx="5.5" cy="16.5" r="3.5" /><circle cx="18.5" cy="16.5" r="3.5" /><path d="M5.5 16.5 9 9h6l3.5 7.5M9 9 12 16.5h6.5M14 5h2.5l-1.5 4" /></>,
+  cargo: <><circle cx="5" cy="17.5" r="3" /><circle cx="19.5" cy="17.5" r="3" /><path d="M5 17.5h9l2-9h2.5M16 8.5l3.5 9" /><path d="M3 9h9v5H4Z" /></>,
+};
+
+export const PROFILE_COLORS: Record<string, string> = {
+  balanced: '#0b6bd6', fast: '#e5383b', shield: '#22a35a', road: '#7b3fe4', smooth: '#00a3a3',
+  gravel: '#a0662b', mtb: '#4e7d2a', ebike: '#ff9500', short: '#5b6b7f', pen: '#d63384',
+  city: '#00a3a3', trekking: '#0b6bd6', cargo: '#d63384',
+};
+
+export const ProfileBadge = ({ icon, size = 34 }: { icon: string; size?: number }) => (
+  <span className="profile-badge" style={{ width: size, height: size, ['--c' as string]: PROFILE_COLORS[icon] ?? 'var(--primary)' }}>
+    <S size={Math.round(size * 0.56)}>{PROFILE_GLYPHS[icon] ?? PROFILE_GLYPHS.balanced}</S>
+  </span>
+);
+
+export const IconCheck = (p: P) => <S {...p}><path d="m5 12.5 4.5 4.5L19 7.5" /></S>;

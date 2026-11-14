@@ -66,3 +66,15 @@ export async function reverseGeocode(p: LngLat, signal?: AbortSignal): Promise<s
     return null;
   }
 }
+
+/** Town (city, town or village) at a point, for links to other services. */
+export async function reverseTown(p: LngLat, signal?: AbortSignal): Promise<string | null> {
+  try {
+    const res = await fetch(`${PHOTON}/reverse?lon=${p[0]}&lat=${p[1]}&lang=de&limit=1`, { signal });
+    if (!res.ok) return null;
+    const pr = (await res.json())?.features?.[0]?.properties ?? {};
+    return pr.city ?? pr.town ?? pr.village ?? pr.district ?? null;
+  } catch {
+    return null;
+  }
+}

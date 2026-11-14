@@ -1,9 +1,9 @@
 import { useRef, useState } from 'react';
 import { formatClock, formatDistance, formatSpeed } from '../lib/geo';
-import { pauseRide, resumeRide, simulateCurrent, stopRide, toggleMute } from '../session';
+import { pauseRide, resumeRide, stopRide, toggleMute } from '../session';
 import { bboxOf, useStore } from '../store';
 import ElevationChart from './ElevationChart';
-import { IconBike, IconChevron, IconClose, IconList, IconMap, IconMountain, IconMute, IconPause, IconPlay, IconSim, IconStop, IconVolume, ManeuverIcon } from './icons';
+import { IconBike, IconChevron, IconClose, IconList, IconMap, IconMountain, IconMute, IconPause, IconPlay, IconStop, IconVolume, ManeuverIcon } from './icons';
 
 export const COMPUTER_FIELDS: Record<string, string> = {
   speed: 'Geschwindigkeit',
@@ -204,9 +204,7 @@ export default function NavigationScreen() {
       <div className="fab-col" style={{ bottom: 'calc(var(--computer-h, 330px) + 12px)', zIndex: 33 }}>
         <button className="fab small" onClick={toggleMute} aria-label="Ton">{session.muted ? <IconMute size={20} /> : <IconVolume size={20} />}</button>
         {route && <button className="fab small" onClick={() => setCues(true)} aria-label="Abbiegehinweise"><IconList size={20} /></button>}
-        {route && <button className="fab small" onClick={overview} aria-label="Übersicht"><IconMap size={20} /></button>}
-        {route && <button className="fab small" onClick={() => simulateCurrent(4)} aria-label="Fahrt simulieren" title="Simulation (Demo)"><IconSim size={20} /></button>}
-      </div>
+        {route && <button className="fab small" onClick={overview} aria-label="Übersicht"><IconMap size={20} /></button>}      </div>
 
       <div className="computer" data-testid="computer" ref={(el) => el && document.documentElement.style.setProperty('--computer-h', `${el.offsetHeight}px`)}>
         <div className="row" style={{ justifyContent: 'space-between', marginBottom: 2 }}>

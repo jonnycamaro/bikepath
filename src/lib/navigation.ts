@@ -135,7 +135,9 @@ export class NavigationEngine {
     const distanceToNext = next ? Math.max(0, next.along - this.along) : 0;
 
     const end = coords[coords.length - 1];
-    if (!this.arrived && this.onRouteOnce && (remaining < this.opts.arriveDistance || haversine(fix.lngLat, end) < this.opts.arriveDistance)) {
+    if (!this.arrived && this.onRouteOnce && (remaining < this.opts.arriveDistance ||
+      // the straight-line test must not fire at the start of a loop, where start and end coincide
+      (haversine(fix.lngLat, end) < this.opts.arriveDistance && remaining < Math.max(200, this.route.distance * 0.2)))) {
       this.arrived = true;
       speak.push('Du hast dein Ziel erreicht');
     }

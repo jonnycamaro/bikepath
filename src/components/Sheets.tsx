@@ -1,15 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
+import { PICKER_TYPES, POI_META } from '../lib/pois';
 import { formatDistance } from '../lib/geo';
 import { MAP_STYLES, OVERLAYS } from '../lib/mapStyles';
 import { AVG_TILE_BYTES, countTiles, deleteRegion, downloadRegion, listRegions, MAX_TILES, storageEstimate, type OfflineRegion } from '../lib/offline';
-import { roundTripWaypoints } from '../lib/roundtrip';
-import { PROFILES } from '../lib/routing';
+import { PROFILES, profileById } from '../lib/routing';
 import { saveRoute, uid, type SavedRoute } from '../lib/storage';
 import { useStore } from '../store';
 import { mapRef } from './MapView';
-import { Icon3D, IconClose, IconTrash } from './icons';
+import { Icon3D, IconCheck, IconClose, IconDown, IconTrash, ProfileBadge } from './icons';
 
-function Modal({ title, onClose, children, testid }: { title: string; onClose: () => void; children: React.ReactNode; testid?: string }) {
+export function Modal({ title, onClose, children, testid }: { title: string; onClose: () => void; children: React.ReactNode; testid?: string }) {
   return (
     <div className="modal-bg" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()} data-testid={testid}>
@@ -25,6 +25,31 @@ function Modal({ title, onClose, children, testid }: { title: string; onClose: (
 
 export function Switch({ on, onChange, label }: { on: boolean; onChange: (v: boolean) => void; label: string }) {
   return <button className={`switch ${on ? 'on' : ''}`} onClick={() => onChange(!on)} role="switch" aria-checked={on} aria-label={label} />;
+}
+
+/** Which kinds of places the POI layer and the POI map show (shared setting). */
+function PoiCategories() {
+  const types = useStore((s) => s.settings.poiTypes);
+  const setSettings = useStore((s) => s.setSettings);
+  return (
+    <div className="poi-chips" data-testid="layer-poi-cats">
+      {PICKER_TYPES.map((id) => {
+        const meta = POI_META[id];
+        const on = types.includes(id);
+        return (
+          <button
+            key={id}
+            className={`chip ${on ? 'active' : ''}`}
+            style={{ '--c': meta.color } as React.CSSProperties}
+            onClick={() => setSettings({ poiTypes: on ? types.filter((x) => x !== id) : [...types, id] })}
+            aria-pressed={on}
+          >
+            <span className="poi-dot">{meta.glyph}</span> {meta.label}
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 export function LayersSheet() {
@@ -53,7 +78,11 @@ export function LayersSheet() {
             </div>
             <Switch on={settings.overlays.includes(o.id)} onChange={() => toggle(o.id)} label={o.label} />
           </div>
-        ))}
+        )).flatMap((row, i) =>
+          OVERLAYS[i].id === 'pois' && settings.overlays.includes('pois')
+            ? [row, <PoiCategories key="poi-cats" />]
+            : [row],
+        )}
         <div className="setting">
           <div className="row"><Icon3D size={20} /><div><div className="lbl">3D-Gelände</div><div className="sub">Mit zwei Fingern neigen</div></div></div>
           <Switch on={settings.terrain3d} onChange={(v) => setSettings({ terrain3d: v })} label="3D" />
@@ -63,68 +92,10 @@ export function LayersSheet() {
   );
 }
 
-const DIRS = [
-  ['N', 0], ['NO', 45], ['O', 90], ['SO', 135], ['S', 180], ['SW', 225], ['W', 270], ['NW', 315],
-] as const;
-
-export function RoundTripSheet() {
-  const s = useStore();
-  const [km, setKm] = useState(30);
-  const [dir, setDir] = useState<number>(0);
-  const [variant, setVariant] = useState(0);
-  const start = s.waypoints[0]?.lngLat ?? s.fix?.lngLat ?? (mapRef.current ? (mapRef.current.getCenter().toArray() as [number, number]) : null);
-  const close = () => s.setSheet(null);
-  const create = (v = variant) => {
-    if (!start) return;
-    const pts = roundTripWaypoints(start, km * 1000, dir, v);
-    s.setWaypoints(pts.map((p, i) => ({ id: uid(), lngLat: p, name: i === 0 || i === pts.length - 1 ? s.waypoints[0]?.name ?? (s.fix ? 'Mein Standort' : undefined) : undefined })));
-    s.setTab('plan');
-    const lons = pts.map((p) => p[0]);
-    const lats = pts.map((p) => p[1]);
-    s.focusMap({ bbox: [Math.min(...lons), Math.min(...lats), Math.max(...lons), Math.max(...lats)] });
-  };
-  return (
-    <Modal title="Rundtour planen" onClose={close} testid="roundtrip-sheet">
-      <p className="muted small" style={{ marginTop: 0 }}>Start: {s.waypoints[0]?.name ?? (s.fix ? 'Mein Standort' : 'Kartenmitte')}</p>
-      <h3>Distanz: {km} km</h3>
-      <input type="range" min={5} max={150} step={5} value={km} onChange={(e) => setKm(Number(e.target.value))} aria-label="Distanz" />
-      <h3>Richtung</h3>
-      <div className="dir-grid">
-        {DIRS.map(([l, d]) => (
-          <button key={l} className={`chip ${dir === d ? 'active' : ''}`} style={{ justifyContent: 'center' }} onClick={() => setDir(d)}>{l}</button>
-        ))}
-      </div>
-      <h3>Routing-Option</h3>
-      <div className="chips">
-        {PROFILES.filter((p) => p.brouter).map((p) => (
-          <button key={p.id} className={`chip ${s.profileId === p.id ? 'active' : ''}`} onClick={() => s.setProfile(p.id)}>{p.label}</button>
-        ))}
-      </div>
-      <h3>Radwege</h3>
-      <div className="chips">
-        {([['low', 'Niedrig', 'Radwege werden bevorzugt, kleine Umwege möglich'],
-           ['medium', 'Mittel', 'Radwege gehen vor, solange der Umweg überschaubar bleibt'],
-           ['high', 'Hoch', 'Radwege erzwingen – kann große Umwege bedeuten']] as const).map(([k, l]) => (
-          <button key={k} className={`chip ${s.settings.cyclePathPref === k ? 'active' : ''}`} onClick={() => s.setSettings({ cyclePathPref: k })}>{l}</button>
-        ))}
-      </div>
-      <div className="muted small">
-        {{ low: 'Radwege werden bevorzugt. Könnte kleinere Umwege verursachen.',
-           medium: 'Radwege werden gegenüber anderen Straßen bevorzugt, solange der Umweg überschaubar ist.',
-           high: 'Erzwinge Radwege, wenn es sie gibt. Dies kann zu großen Umwegen führen.' }[s.settings.cyclePathPref]}
-      </div>
-      <div className="spacer" />
-      <button className="btn primary block" disabled={!start} onClick={() => { create(); close(); }} data-testid="roundtrip-go">Rundtour erstellen</button>
-      <div className="spacer" />
-      <button className="btn block" disabled={!start} onClick={() => { const v = variant + 1; setVariant(v); create(v); close(); }}>Andere Variante</button>
-    </Modal>
-  );
-}
-
 export function SaveSheet() {
   const s = useStore();
   const [name, setName] = useState(
-    s.planName || (s.waypoints.length >= 2 ? `${s.waypoints[0].name?.split(',')[0] ?? 'Start'} – ${s.waypoints[s.waypoints.length - 1].name?.split(',')[0] ?? 'Ziel'}` : 'Meine Route'),
+    s.planName || (s.loop ? `Rundtour ${Math.round((s.route?.distance ?? s.loop.distance) / 1000)} km` : s.waypoints.length >= 2 ? `${s.waypoints[0].name?.split(',')[0] ?? 'Start'} – ${s.waypoints[s.waypoints.length - 1].name?.split(',')[0] ?? 'Ziel'}` : 'Meine Route'),
   );
   const close = () => s.setSheet(null);
   const save = async (asNew: boolean) => {
@@ -252,4 +223,64 @@ export function OfflineSheet() {
 
 export function routeDistanceLabel(m: number) {
   return formatDistance(m);
+}
+
+const CYCLEPATH_LEVELS = [
+  ['low', 'Niedrig', 'Radwege werden bevorzugt. Könnte kleinere Umwege verursachen.'],
+  ['medium', 'Mittel', 'Radwege werden gegenüber anderen Straßen bevorzugt, solange der Umweg überschaubar ist.'],
+  ['high', 'Hoch', 'Erzwinge Radwege, wenn es sie gibt. Dies kann zu großen Umwegen führen.'],
+] as const;
+
+/** Compact display of the current routing option; tapping it opens the picker. */
+export function ProfileSelector({ onOpen }: { onOpen?: () => void }) {
+  const profileId = useStore((s) => s.profileId);
+  const p = profileById(profileId);
+  return (
+    <button className="profile-select" onClick={onOpen ?? (() => useStore.getState().setSheet('profile'))} data-testid="profile-select">
+      <ProfileBadge icon={p.icon} size={30} />
+      <span className="grow">
+        <span className="title">{p.label}</span>
+        <span className="meta">{p.description}</span>
+      </span>
+      <IconDown size={18} className="chev" />
+    </button>
+  );
+}
+
+/** `onClose` lets another sheet show the picker on top of itself instead of being replaced. */
+export function ProfileSheet({ onClose }: { onClose?: () => void }) {
+  const s = useStore();
+  const close = onClose ?? (() => s.setSheet(null));
+  return (
+    <Modal title="Routenoption" onClose={close} testid="profile-sheet">
+      <div className="profile-intro">Wähle, wie deine Route berechnet werden soll.</div>
+      <div className="profile-list" role="radiogroup" aria-label="Routenoption">
+        {PROFILES.map((p) => {
+          const active = p.id === s.profileId;
+          return (
+            <div key={p.id} className={`profile-opt ${active ? 'active' : ''}`}>
+              <button className="row-btn" role="radio" aria-checked={active} onClick={() => { s.setProfile(p.id); close(); }} data-testid={`profile-${p.id}`}>
+                <ProfileBadge icon={p.icon} />
+                <span className="grow">
+                  <span className="title">{p.label}</span>
+                  <span className="meta">{p.description}</span>
+                </span>
+                <span className="check">{active && <IconCheck size={18} />}</span>
+              </button>
+              {p.id === 'cyclepaths' && active && (
+                <div className="sub">
+                  <div className="segmented sm">
+                    {CYCLEPATH_LEVELS.map(([k, l]) => (
+                      <button key={k} className={s.settings.cyclePathPref === k ? 'active' : ''} onClick={() => s.setSettings({ cyclePathPref: k })}>{l}</button>
+                    ))}
+                  </div>
+                  <div className="sub-note">{CYCLEPATH_LEVELS.find(([k]) => k === s.settings.cyclePathPref)?.[2]}</div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </Modal>
+  );
 }

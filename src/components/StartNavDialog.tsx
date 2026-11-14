@@ -17,13 +17,15 @@ export default function StartNavDialog({ route, onClose }: { route: Route; onClo
   const [guided, setGuided] = useState(settings.navMode !== 'self-guided');
   const [entry, setEntry] = useState<'start' | 'nearest' | 'reverse'>('start');
   const [remember, setRemember] = useState(settings.navMode !== 'ask');
+  // never remembered: a simulated ride is always an explicit choice
+  const [simulate, setSimulate] = useState(false);
   const opts = entryOptions(route, fix?.lngLat);
 
   const go = () => {
     if (remember) setSettings({ navMode: guided ? 'turn-by-turn' : 'self-guided' });
     else setSettings({ navMode: 'ask' });
     onClose();
-    startNavigation(route, { guided, entry });
+    startNavigation(route, { guided, entry, simulate });
   };
 
   return (
@@ -75,6 +77,13 @@ export default function StartNavDialog({ route, onClose }: { route: Route; onClo
             <div className="sub">Diesen Modus künftig immer verwenden</div>
           </div>
           <Switch on={remember} onChange={setRemember} label="Nicht mehr fragen" />
+        </div>
+        <div className="setting">
+          <div>
+            <div className="lbl">Simulation aktivieren</div>
+            <div className="sub">Route mit simuliertem GPS abfahren statt mit deiner Position</div>
+          </div>
+          <Switch on={simulate} onChange={setSimulate} label="Simulation aktivieren" />
         </div>
 
         <div className="spacer" />

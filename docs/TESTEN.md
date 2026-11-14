@@ -38,9 +38,9 @@ Korrektur wiederherstellen.
 npm run test:live
 ```
 
-Ruft BRouter, Photon, Open-Meteo, Overpass und die Kachelserver wirklich auf.
+Ruft BRouter, Photon, Open-Meteo und die Kachelserver (auch für die POIs) wirklich auf.
 Braucht Internet und ist **absichtlich nicht Teil von `npm test`**: Die
-öffentlichen Overpass-Server sind oft überlastet und antworten mit 429, 502 oder 504.
+öffentlichen Gratisdienste sind manchmal überlastet und antworten mit 429, 502 oder 504.
 Ein Fehlschlag dort heißt zuerst „Server gerade überlastet", nicht „Code kaputt".
 
 ## Auf dem Handy testen
@@ -48,13 +48,25 @@ Ein Fehlschlag dort heißt zuerst „Server gerade überlastet", nicht „Code k
 Am Mac liefert der Browser nur eine grobe Ortung. Alles, was mit Bewegung,
 Ansagen oder Display zu tun hat, lässt sich nur auf einem echten Gerät beurteilen.
 
-### Der zuverlässige Weg: Portweiterleitung
+Chrome gibt den Standort nur an sichere Seiten heraus: `https://…` oder `localhost`.
+Über `http://<IP-des-Macs>:5173` lädt die App zwar, meldet aber „Standortzugriff
+verweigert“ – ohne dass Chrome überhaupt fragt.
 
-Der naheliegende Weg über `npm run dev:phone` und `https://<IP-des-Macs>:5173`
-scheitert auf Android oft mit `ERR_TOO_MANY_RETRIES`, weil Chrome selbstsignierte
-Zertifikate dort streng behandelt. Besser ist die Weiterleitung über adb: Die App
-erscheint dem Browser dann als `localhost` und gilt damit automatisch als sichere
-Herkunft – ohne Zertifikat, mit GPS, Service Worker und Wake Lock.
+### Weg 1: HTTPS im WLAN (ohne Kabel und ohne adb)
+
+```bash
+npm run dev:phone
+```
+
+Am Handy `https://<IP-des-Macs>:5173` öffnen (die IP zeigt Vite beim Start), die
+Zertifikatswarnung über „Erweitert → Weiter zu …“ einmal bestätigen und den Standort
+erlauben. Danach funktionieren GPS, Service Worker und Wake Lock. Am Mac heißt die
+Adresse dann `https://localhost:5173`; die http-Adresse geht nicht mehr.
+
+### Weg 2: Portweiterleitung über adb
+
+Die App erscheint dem Browser als `localhost` und gilt damit als sichere Herkunft –
+ohne Zertifikat und unabhängig von WLAN-Berechtigungen.
 
 ```bash
 npm run dev
@@ -64,7 +76,29 @@ npm run dev
 adb reverse tcp:5173 tcp:5173
 ```
 
-Danach am Handy `http://localhost:5173` öffnen.
+Danach am Handy `http://localhost:5173` öffnen. Die Weiterleitung hält, solange die
+adb-Verbindung steht; schläft das Handy länger, muss sie neu eingerichtet werden.
+
+### Android 17: „Geräte in der Nähe“ für Chrome
+
+Ab Android 17 braucht jede App die Berechtigung **„Geräte in der Nähe“**
+(`ACCESS_LOCAL_NETWORK`), um Geräte im eigenen Netz zu erreichen. Fehlt sie Chrome,
+verlässt die Anfrage an die IP des Macs das Handy gar nicht, und Chrome zeigt
+`ERR_TOO_MANY_RETRIES` – bei http und https gleich. Mit dem Zertifikat hat das nichts zu
+tun. Erkennen lässt es sich so:
+
+```bash
+adb shell appops get com.android.chrome | grep LOCAL_NETWORK
+```
+
+Steht dort `ACCESS_LOCAL_NETWORK: ignore` und springt `rejectTime` bei jedem Aufruf neu,
+ist es diese Sperre. Abhilfe am Handy: Einstellungen → Apps → Chrome → Berechtigungen →
+„Geräte in der Nähe“ → Zulassen, dann Chrome neu starten. Weg 2 ist von der Sperre
+nicht betroffen.
+
+Weitere Fehlerquellen, die sich bei der Suche als harmlos erwiesen haben: Die
+macOS-Firewall war aus, Vite lauscht mit `--host` auf allen Schnittstellen, und
+Tailscale am Handy leitet das Heimnetz nicht um, solange kein Exit-Node aktiv ist.
 
 ### Verbindung ohne Kabel
 
@@ -98,14 +132,46 @@ der Genauigkeit wertlos – für Abläufe und Oberfläche aber brauchbar.
 
 ### Simulierte Fahrt
 
-Der ▷-Knopf in der Navigation fährt die Route virtuell ab, mit 20 km/h und
-4-facher Geschwindigkeit. Damit lassen sich Ansagen, Abbiegebanner,
-Fahrradcomputer und Ankunft prüfen, ohne vor die Tür zu gehen.
+Im Startdialog der Navigation („Weiter mit“) gibt es den Schalter **„Simulation
+aktivieren“**. Er ist jedes Mal aus. Eingeschaltet fährt die App die Route virtuell ab,
+mit 20 km/h und 4-facher Geschwindigkeit, ab dem gewählten Einstiegspunkt. Damit lassen
+sich Ansagen, Abbiegebanner, Fahrradcomputer und Ankunft prüfen, ohne vor die Tür zu
+gehen. Beim Beenden der Navigation schaltet die App zurück auf echtes GPS.
 
-Zwei Eigenheiten: Der Simulator setzt eigene, beschleunigte Zeitstempel – eine so
-aufgezeichnete Fahrt hat deshalb andere Zeiten als eine echte. Und ein Neustart
-der Simulation springt an den Routenanfang zurück, was in der Aufzeichnung wie
-ein GPS-Sprung aussieht.
+Ist im Profil „Nicht mehr fragen“ gesetzt, erscheint der Dialog nicht – dann den
+Navigationsmodus wieder auf „Fragen“ stellen.
+
+Eigenheit: Der Simulator setzt eigene, beschleunigte Zeitstempel – eine so
+aufgezeichnete Fahrt hat deshalb andere Zeiten als eine echte.
+
+## Im Browser am Mac durchspielen
+
+Für Abläufe ohne echtes GPS (Planer, POI-Karte, Dialoge) reicht ein ferngesteuerter
+Chromium am Mac. Der Standort lässt sich dabei frei vorgeben. Playwright ist kein Teil
+des Projekts; `playwright-core` in einem eigenen Ordner außerhalb des Repos genügt, der
+Browser aus `~/Library/Caches/ms-playwright` wird über `executablePath` angegeben.
+
+```js
+const ctx = await browser.newContext({
+  ignoreHTTPSErrors: true,                      // für npm run dev:phone
+  viewport: { width: 390, height: 844 },
+  geolocation: { latitude: 53.2606, longitude: 7.4572 },
+  permissions: ['geolocation'],
+});
+```
+
+Hilfreich:
+
+- `window.__bikepathMap` ist die Hauptkarte, `window.__poiMap` die gerade offene
+  POI-Karte. Damit lässt sich zoomen (`jumpTo`) und mit `queryRenderedFeatures` prüfen,
+  was gezeichnet ist (Ebenen `pois-cluster`, `pois-point`, in der POI-Karte
+  `poi-cluster`, `poi-point`).
+- Ein Ort auf der Karte wird angetippt, indem man seine Koordinate mit `project()` in
+  Pixel umrechnet und dorthin klickt.
+- Testkennungen (Auswahl): `onboard-start`, `tab-plan`, `plan-mode-trip`,
+  `plan-mode-loop`, `nav-plan-trip`, `poi-open`, `poi-picker`, `poi-filter`, `poi-status`,
+  `poi-card`, `poi-take`, `link-google`, `link-tripadvisor`, `layers-btn`, `place-card`,
+  `mode-turn`, `nav-go`.
 
 ## Fehlersuche am Gerät
 

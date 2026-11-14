@@ -57,9 +57,14 @@ export interface Settings {
   batterySave: boolean;
   mapStyle: string;
   overlays: string[];
+  /** POI categories shown when picking a place from the POI map, see lib/pois.ts */
+  poiTypes: string[];
   terrain3d: boolean;
   defaultProfile: string;
-  speedKmh: Record<string, number>;
+  /** id of the rider's bike, see lib/bike.ts */
+  bikeType: string;
+  /** own average in km/h; null = the bike type's usual pace */
+  bikeSpeed: number | null;
   computerFields: string[];
   routeColorMode: 'solid' | 'surface' | 'waytype' | 'gradient';
   onboarded: boolean;
@@ -92,9 +97,11 @@ export const DEFAULT_SETTINGS: Settings = {
   batterySave: false,
   mapStyle: 'bikepath',
   overlays: [],
+  poiTypes: ['food', 'restaurant', 'shop', 'water', 'toilets', 'bikeshop', 'sight'],
   terrain3d: false,
   defaultProfile: 'balanced',
-  speedKmh: {},
+  bikeType: 'trekking',
+  bikeSpeed: null,
   computerFields: ['speed', 'distance', 'time', 'remaining', 'eta', 'ascent'],
   routeColorMode: 'solid',
   onboarded: false,

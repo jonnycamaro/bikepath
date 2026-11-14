@@ -13,17 +13,20 @@ Bikepath ist eine installierbare Web-App (PWA). Sie braucht keinen App Store und
 | [docs/VEROEFFENTLICHEN.md](docs/VEROEFFENTLICHEN.md) | Deploy über GitHub Pages, Basispfad, Fehlersuche |
 
 Unter `.claude/skills/` liegen zusätzlich Anleitungen für Claude Code
-(Handytest, Veröffentlichen, Routing-Profile).
+(Handytest, Browser-Test am Mac, Veröffentlichen, Routing-Profile).
 
 ## Funktionen
 
-- **Karte:** Suche (Adressen, Orte, Koordinaten), eigener Standort mit Folgemodus und Fahrtrichtung, 7 Kartenstile, 3D-Gelände, Ebenen (Radrouten, MTB-Routen, Relief, Rad-POIs). Langes Drücken auf die Karte öffnet „Route hierher“.
+- **Karte:** Suche (Adressen, Orte, Koordinaten), eigener Standort mit Folgemodus und Fahrtrichtung, 7 Kartenstile, 3D-Gelände, Ebenen (Radrouten, MTB-Routen, Relief, POIs). Langes Drücken auf die Karte öffnet „Route hierher“.
+- **POIs:** Cafés, Restaurants, Supermärkte, Trinkwasser, WCs, Radläden, Sehenswürdigkeiten, Unterkünfte und mehr aus OpenStreetMap – 14 Kategorien, einzeln wählbar. Als Kartenebene zuschaltbar; herausgezoomt fassen Kreise mit Anzahl nahe Orte zusammen, ein Tipp zoomt hinein. Ein angetippter Ort zeigt Name, Kategorie und Links „Google Maps“ und „Tripadvisor“.
 - **Planen:**
-  - Start, Ziel und Zwischenpunkte per Antippen oder Suche setzen
+  - Zuerst die Art wählen: **Strecke** (Ziel mit Zwischenstopps) oder **Rundtour** – im Planen-Tab und im Navigieren-Tab
+  - Bei aktivem GPS ist der eigene Standort automatisch der Start
+  - Start, Ziel und Zwischenpunkte per Antippen, Suche oder über die POI-Karte setzen (Symbol rechts im Suchfeld)
   - Punkte verschieben, Routenlinie ziehen, um einen Punkt einzufügen
   - Rückgängig, Wiederholen, Umkehren, Reihenfolge ändern, Freihand-Abschnitte
   - 9 Routing-Optionen: Ausgewogen, Schnellste, Radwege, Rennrad, Geschmeidig, Gravel, Mountainbike, E-Bike, Kürzeste
-  - Radweg-Stufe niedrig/mittel/hoch, Schnellziele Zuhause und Arbeit
+  - Radweg-Stufe niedrig/mittel/hoch
   - Distanz, Dauer, Auf- und Abstieg, Höhenprofil nach Steigung eingefärbt
   - Route Insights: Untergrund, Wegtyp und Steigung, auch farbig auf der Karte
   - Geschwindigkeitsregler, Wetter mit Gegenwind-Anteil, Rundtour-Planer
@@ -45,7 +48,7 @@ Unter `.claude/skills/` liegen zusätzlich Anleitungen für Claude Code
   - Export: GPX und KML, auch über das Teilen-Menü
 - **Profil:** Statistik für 7 Tage, 30 Tage und gesamt. Navigationsmodus, Batteriesparmodus, Darstellung (System/Hell/Dunkel), Adressen, Fahrradcomputer-Layouts, Offline-Karten.
 - **Offline:** App-Shell, gespeicherte Routen und heruntergeladene Kartengebiete funktionieren ohne Netz.
-- **Simulation:** Mit dem ▷-Knopf in der Navigation lässt sich eine Route virtuell abfahren. Gedacht für Demo und Test.
+- **Simulation:** Im Startdialog der Navigation („Weiter mit“) schaltet „Simulation aktivieren“ eine virtuelle Fahrt entlang der Route ein (standardmäßig aus). Gedacht für Demo und Test.
 
 ## Starten
 
@@ -65,7 +68,7 @@ npm run dev
 npm run dev:phone
 ```
 
-Auf dem Handy `https://<IP-des-Macs>:5173` öffnen und die Zertifikatswarnung bestätigen. GPS funktioniert nur über HTTPS.
+Auf dem Handy `https://<IP-des-Macs>:5173` öffnen und die Zertifikatswarnung bestätigen. GPS funktioniert nur über HTTPS (oder `localhost`). Unter Android 17 braucht Chrome dafür die Berechtigung „Geräte in der Nähe“ – Details und weitere Wege in [docs/TESTEN.md](docs/TESTEN.md).
 
 ### Dauerhaft installieren (ohne Store)
 
@@ -88,7 +91,7 @@ Danach startet Bikepath im Vollbild mit eigenem Icon.
 npm test
 ```
 
-59 Unit-Tests: Geometrie, BRouter-Parser mit einer echten Antwort, Abbiegehinweise, Navigations-Engine (Ansagen, Verlassen der Route, Ankunft, selbstgeführter Modus), Steigungserkennung und -ansagen, Routen-Operationen (Einstiegspunkt, Umkehren, Rückführung auf die Route), Recorder (Auto-Pause-Schwellen, GPS-Sprünge, Zeitmessung, Höhenfilter), GPX/KML, Rundtour, Offline-Kacheln, Planer-Store mit IndexedDB und die Fahrt-Session (Wiederherstellen nach Unterbrechung, GPS-Signalhinweis).
+Unit-Tests (über 70): Geometrie, BRouter-Parser mit einer echten Antwort, Abbiegehinweise, Navigations-Engine (Ansagen, Verlassen der Route, Ankunft, selbstgeführter Modus), Steigungserkennung und -ansagen, Routen-Operationen (Einstiegspunkt, Umkehren, Rückführung auf die Route), Recorder (Auto-Pause-Schwellen, GPS-Sprünge, Zeitmessung, Höhenfilter), GPX/KML, Rundtour, Offline-Kacheln, Planer-Store mit IndexedDB und die Fahrt-Session (Wiederherstellen nach Unterbrechung, GPS-Signalhinweis).
 
 ```bash
 npm run test:live
@@ -111,9 +114,9 @@ React 18, TypeScript, Vite, MapLibre GL, zustand, idb-keyval, vite-plugin-pwa (W
 | Vektorkarten | [OpenFreeMap](https://openfreemap.org) |
 | Rasterkarten | CyclOSM, OSM, OpenTopoMap, Esri |
 | Höhen | AWS Terrain Tiles |
-| POIs | Overpass |
+| POIs | OpenStreetMap-Daten aus den OpenFreeMap-Vektorkacheln |
 | Wetter | Open-Meteo |
 
 Alle Dienste sind kostenlos und brauchen keinen API-Schlüssel. Kartendaten © OpenStreetMap-Mitwirkende.
 
-**Hinweis zu POIs:** Die öffentlichen Overpass-Server sind oft überlastet. Bikepath probiert der Reihe nach vier Server und zeigt sonst einen Hinweis an.
+**Hinweis zu Google und Tripadvisor:** Bikepath zeigt keine Inhalte dieser Dienste an, sondern verlinkt nur auf deren Suche (Google „Maps URLs“, ohne Schlüssel). Daten gehen erst beim Antippen eines Links dorthin.

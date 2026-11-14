@@ -13,7 +13,10 @@ import RecordTab from './components/RecordTab';
 import RoutesScreen from './components/RoutesScreen';
 import ProfileScreen from './components/ProfileScreen';
 import SearchBox from './components/SearchBox';
-import { LayersSheet, OfflineSheet, RoundTripSheet, SaveSheet } from './components/Sheets';
+import ExternalLinks from './components/ExternalLinks';
+import { BikeSheet } from './components/BikeSheet';
+import { RoundTripSheet } from './components/RoundTripSheet';
+import { LayersSheet, OfflineSheet, ProfileSheet, SaveSheet } from './components/Sheets';
 import StartNavDialog, { MissedStopDialog } from './components/StartNavDialog';
 import { Icon3D, IconBike, IconClose, IconCompass, IconHeading, IconLayers, IconLocate, IconMap, IconNavigate, IconPlan, IconProfile, IconRecord, IconRoutes } from './components/icons';
 
@@ -24,7 +27,7 @@ function TabBar() {
   const items: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: 'map', label: 'Karte', icon: <IconMap /> },
     { id: 'plan', label: 'Planen', icon: <IconPlan /> },
-    { id: 'record', label: live ? 'Live' : 'Aufzeichnen', icon: <IconRecord /> },
+    { id: 'record', label: live ? 'Live' : 'Navigieren', icon: live ? <IconRecord /> : <IconNavigate /> },
     { id: 'routes', label: 'Meine Routen', icon: <IconRoutes /> },
     { id: 'profile', label: 'Profil', icon: <IconProfile /> },
   ];
@@ -117,6 +120,8 @@ function PlaceCard({ place, onClose }: { place: Place; onClose: () => void }) {
           <button className="btn primary grow" onClick={routeHere} data-testid="route-here"><IconNavigate size={18} /> Route hierher</button>
           <button className="btn grow" onClick={() => { s.setWaypoints([{ id: 'p' + Date.now(), lngLat: place.lngLat, name: place.name }]); s.setTab('plan'); onClose(); }}>Als Start</button>
         </div>
+        <div className="spacer" />
+        <ExternalLinks place={place} />
       </div>
     </div>
   );
@@ -157,7 +162,8 @@ export default function App() {
   const pendingNav = useStore((s) => s.pendingNav);
   const theme = useStore((s) => s.settings.theme);
   const batterySave = useStore((s) => s.settings.batterySave);
-  const [place, setPlace] = useState<Place | null>(null);
+  const place = useStore((s) => s.placeCard);
+  const setPlace = useStore((s) => s.showPlace);
   const [toastVisible, setToastVisible] = useState(false);
   const firstFix = useRef(true);
 
@@ -238,6 +244,8 @@ export default function App() {
 
       {pendingNav && <StartNavDialog route={pendingNav} onClose={() => useStore.getState().setPendingNav(null)} />}
       <MissedStopDialog />
+      {sheet === 'profile' && <ProfileSheet />}
+      {sheet === 'bike' && <BikeSheet />}
       {sheet === 'layers' && <LayersSheet />}
       {sheet === 'roundtrip' && <RoundTripSheet />}
       {sheet === 'save' && <SaveSheet />}

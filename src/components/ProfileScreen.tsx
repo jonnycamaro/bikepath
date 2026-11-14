@@ -4,6 +4,7 @@ import { location } from '../lib/location';
 import { useStore } from '../store';
 import { COMPUTER_FIELDS } from './NavigationScreen';
 import { IconChevron, IconOffline } from './icons';
+import { BikeSelector } from './BikeSheet';
 import { Switch } from './Sheets';
 
 export default function ProfileScreen() {
@@ -43,6 +44,12 @@ export default function ProfileScreen() {
             </div>
           </div>
         ))}
+      </div>
+
+      <div className="panel">
+        <h3 style={{ marginTop: 0 }}>Mein Fahrrad</h3>
+        <BikeSelector onOpen={() => useStore.getState().setSheet('bike')} />
+        <p className="muted small" style={{ margin: '8px 2px 0' }}>Daraus ergibt sich das Tempo für Fahrzeiten, Ankunft und Rundtouren nach Zeit.</p>
       </div>
 
       <button className="panel row" style={{ width: '100%' }} onClick={() => useStore.setState({ sheet: 'offline', offlineSelect: true, tab: 'map' })} data-testid="open-offline">
@@ -161,7 +168,7 @@ export default function ProfileScreen() {
 
       <div className="panel small muted">
         <b style={{ color: 'var(--navy)' }}>Bikepath 1.0</b><br />
-        Kartendaten © OpenStreetMap-Mitwirkende · Karten: OpenFreeMap, CyclOSM, OpenTopoMap, Esri · Routing: BRouter · Suche: Photon (komoot) · Höhen: AWS Terrain Tiles · Wetter: Open-Meteo · POIs: Overpass API
+        Kartendaten © OpenStreetMap-Mitwirkende · Karten: OpenFreeMap, CyclOSM, OpenTopoMap, Esri · Routing: BRouter · Suche: Photon (komoot) · Höhen: AWS Terrain Tiles · Wetter: Open-Meteo · POIs: OpenStreetMap über OpenFreeMap
       </div>
     </div>
   );
