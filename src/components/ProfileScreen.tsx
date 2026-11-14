@@ -3,9 +3,33 @@ import { PROFILES } from '../lib/routing';
 import { location } from '../lib/location';
 import { useStore } from '../store';
 import { COMPUTER_FIELDS } from './NavigationScreen';
-import { IconChevron, IconOffline } from './icons';
+import { IconChevron, IconOffline, IconShare } from './icons';
 import { BikeSelector } from './BikeSheet';
 import { Switch } from './Sheets';
+
+/** Public address of the app; a dev server shares this instead of its own address. */
+const PUBLIC_URL = 'https://jonnycamaro.github.io/bikepath/';
+
+/** Share the app's link with the system share sheet (WhatsApp, mail, …); copy it where that is missing. */
+async function shareApp() {
+  const url = import.meta.env.PROD ? new URL(import.meta.env.BASE_URL, window.location.origin).href : PUBLIC_URL;
+  const data = { title: 'Bikepath', text: 'Bikepath – Fahrrad-Routenplaner und Navigation fürs Handy:', url };
+  const toast = useStore.getState().toastMsg;
+  if (navigator.share) {
+    try {
+      await navigator.share(data);
+    } catch (e) {
+      if ((e as Error).name !== 'AbortError') toast('Teilen nicht möglich');
+    }
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(url);
+    toast('Link kopiert');
+  } catch {
+    toast(url);
+  }
+}
 
 export default function ProfileScreen() {
   const saved = useStore((s) => s.saved);
@@ -166,9 +190,20 @@ export default function ProfileScreen() {
         </div>
       </div>
 
+      <div className="panel" style={{ padding: '0 14px' }}>
+        <button className="setting row-btn" onClick={shareApp} data-testid="share-app">
+          <div className="row"><IconShare size={20} /><div><div className="lbl">App teilen</div><div className="sub">Link per WhatsApp, Mail oder anderer App senden</div></div></div>
+          <IconChevron size={18} />
+        </button>
+        <button className="setting row-btn" onClick={() => useStore.getState().setSheet('legal')} data-testid="open-legal">
+          <div><div className="lbl">Rechtliches & Lizenzen</div><div className="sub">Kartendaten, Dienste und Open-Source-Bibliotheken</div></div>
+          <IconChevron size={18} />
+        </button>
+      </div>
+
       <div className="panel small muted">
         <b style={{ color: 'var(--navy)' }}>Bikepath 1.0</b><br />
-        Kartendaten © OpenStreetMap-Mitwirkende · Karten: OpenFreeMap, CyclOSM, OpenTopoMap, Esri · Routing: BRouter · Suche: Photon (komoot) · Höhen: AWS Terrain Tiles · Wetter: Open-Meteo · POIs: OpenStreetMap über OpenFreeMap
+        Kartendaten © OpenStreetMap-Mitwirkende · Karten: OpenFreeMap, CyclOSM, OpenTopoMap, Esri · Routing: BRouter · Suche: Photon (komoot) · Höhen: Mapzen Terrain Tiles · Wetter: Open-Meteo.com (CC BY 4.0)
       </div>
     </div>
   );

@@ -155,6 +155,23 @@ mit Offline-Karten. Overpass wurde dafür aufgegeben: Die öffentlichen Server w
 - **Simulation** ist ein Schalter im Startdialog (`StartNavDialog.tsx`, standardmäßig aus)
   und wird an `startNavigation(route, { simulate })` übergeben.
 
+## Lizenzen und Quellenangaben
+
+- **Bibliotheken:** `build/licenses-plugin.mjs` sammelt beim Build die Lizenzen aller
+  npm-Pakete, die im Bundle landen, und schreibt sie nach `dist/licenses.json`. Die App
+  zeigt sie unter Profil → „Rechtliches & Lizenzen“ (`LegalSheet.tsx`). MIT, BSD, ISC und
+  Apache-2.0 verlangen, Copyright und Lizenztext mitzuliefern; der Minifier behält nur
+  einen Teil der Kommentare. Stand November 2026: 45 Pakete, keines unter GPL oder AGPL.
+  Zwei Sonderfälle sind im Plugin-Aufruf in `vite.config.ts` von Hand eingetragen: die
+  Workbox-Laufzeit im Service Worker (baut Workbox, nicht Rollup) und die Abhängigkeiten,
+  die MapLibre schon fertig gebündelt mitbringt.
+- **Daten und Dienste:** Die Quellenangaben stehen in `SOURCES` in `LegalSheet.tsx`. Wer
+  einen Kartenstil, eine Ebene oder einen Dienst ergänzt, trägt ihn dort mit der
+  geforderten Namensnennung ein. Open-Meteo (CC BY 4.0) ist zusätzlich direkt am
+  Wetter im Planer genannt; die Karten selbst nennen ihre Quellen im Attributionsfeld.
+- **Vor einer neuen Abhängigkeit** deren Lizenz prüfen: GPL/AGPL würde verlangen, den
+  Quellcode der App unter derselben Lizenz offenzulegen.
+
 ## Konventionen
 
 - **Sprache:** Oberfläche und Dokumentation auf Deutsch, Code und Kommentare auf Englisch.

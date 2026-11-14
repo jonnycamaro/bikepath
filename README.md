@@ -46,7 +46,7 @@ Unter `.claude/skills/` liegen zusätzlich Anleitungen für Claude Code
 - **Meine Routen:** Geplant, Gefahren, Favoriten, Sammlungen. Detailansicht, Bearbeiten, Umbenennen, Löschen.
   - Import: GPX und KML
   - Export: GPX und KML, auch über das Teilen-Menü
-- **Profil:** Statistik für 7 Tage, 30 Tage und gesamt. Navigationsmodus, Batteriesparmodus, Darstellung (System/Hell/Dunkel), Adressen, Fahrradcomputer-Layouts, Offline-Karten.
+- **Profil:** App-Link teilen (Teilen-Menü des Handys), Rechtliches & Lizenzen (Quellenangaben, Open-Source-Lizenzen). Statistik für 7 Tage, 30 Tage und gesamt. Navigationsmodus, Batteriesparmodus, Darstellung (System/Hell/Dunkel), Adressen, Fahrradcomputer-Layouts, Offline-Karten.
 - **Offline:** App-Shell, gespeicherte Routen und heruntergeladene Kartengebiete funktionieren ohne Netz.
 - **Simulation:** Im Startdialog der Navigation („Weiter mit“) schaltet „Simulation aktivieren“ eine virtuelle Fahrt entlang der Route ein (standardmäßig aus). Gedacht für Demo und Test.
 

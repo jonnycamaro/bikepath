@@ -14,6 +14,7 @@ import RoutesScreen from './components/RoutesScreen';
 import ProfileScreen from './components/ProfileScreen';
 import SearchBox from './components/SearchBox';
 import ExternalLinks from './components/ExternalLinks';
+import LegalSheet from './components/LegalSheet';
 import { BikeSheet } from './components/BikeSheet';
 import { RoundTripSheet } from './components/RoundTripSheet';
 import { LayersSheet, OfflineSheet, ProfileSheet, SaveSheet } from './components/Sheets';
@@ -249,6 +250,7 @@ export default function App() {
       {sheet === 'layers' && <LayersSheet />}
       {sheet === 'roundtrip' && <RoundTripSheet />}
       {sheet === 'save' && <SaveSheet />}
+      {sheet === 'legal' && <LegalSheet />}
       {toast && toastVisible && <div className="toast" key={toast.id} role="status">{toast.msg}</div>}
       {ready && !onboarded && <Onboarding />}
     </div>

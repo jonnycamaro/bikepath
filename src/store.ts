@@ -78,7 +78,7 @@ interface State {
   session: SessionView | null;
   // ui
   toast: { msg: string; id: number } | null;
-  sheet: null | 'profile' | 'bike' | 'layers' | 'roundtrip' | 'offline' | 'settings' | 'save' | 'cues' | 'import';
+  sheet: null | 'profile' | 'bike' | 'layers' | 'roundtrip' | 'offline' | 'settings' | 'save' | 'cues' | 'import' | 'legal';
   focus: { bbox?: [number, number, number, number]; center?: LngLat; zoom?: number; id: number } | null;
   offlineSelect: boolean;
   /** place shown in the card on the map tab (search result or tapped POI) */

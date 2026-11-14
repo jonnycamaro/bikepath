@@ -277,6 +277,9 @@ export default function PlannerSheet() {
                     <span style={{ color: 'var(--green)' }}>Rückenwind {Math.round(wind.tail * 100)}%</span>
                   </div>
                 )}
+                <div className="small muted" style={{ marginTop: 6 }}>
+                  Wetterdaten: <a href="https://open-meteo.com" target="_blank" rel="noopener noreferrer">Open-Meteo.com</a> (CC BY 4.0)
+                </div>
               </div>
             )}
 

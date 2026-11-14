@@ -3,6 +3,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import basicSsl from '@vitejs/plugin-basic-ssl';
 import { VitePWA } from 'vite-plugin-pwa';
+import thirdPartyLicenses from './build/licenses-plugin.mjs';
 
 // Tile/style hosts whose responses are cached for offline use.
 // The same cache name is filled explicitly by "Offline-Karten" (src/lib/offline.ts).
@@ -17,6 +18,13 @@ export default defineConfig(({ mode }) => ({
   base,
   plugins: [
     react(),
+    // licences of the bundled packages -> dist/licenses.json (shown under Profil → Rechtliches)
+    thirdPartyLicenses({
+      // the service worker is built by Workbox, not Rollup: its runtime is listed by hand
+      extra: ['workbox-core', 'workbox-precaching', 'workbox-routing', 'workbox-strategies', 'workbox-expiration', 'workbox-cacheable-response'],
+      // MapLibre's dist file already contains its dependencies, so Rollup never sees them
+      prebundled: ['maplibre-gl'],
+    }),
     // `npm run dev:phone` serves over HTTPS on the LAN so GPS works on a real phone.
     ...(mode === 'phone' ? [basicSsl()] : []),
     VitePWA({
@@ -41,7 +49,7 @@ export default defineConfig(({ mode }) => ({
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+        globPatterns: ['**/*.{js,css,html,svg,png,woff2}', 'licenses.json'],
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         runtimeCaching: [
           {
