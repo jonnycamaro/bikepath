@@ -173,6 +173,10 @@ mit Offline-Karten. Overpass wurde dafür aufgegeben: Die öffentlichen Server w
   jenseits ihres Rands (damit Symbole an der Kante nicht abgeschnitten werden). Wer Orte
   aus mehreren Kacheln zusammenführt, zählt sie sonst doppelt oder vierfach.
   `decodePoiTile` übernimmt deshalb nur Punkte innerhalb `0 … extent`.
+- **Neue Fassungen** schaltet `src/updates.ts` erst um, wenn weder Fahrt noch Planung
+  offen ist – das Umschalten lädt die Seite neu, und die Planung lebt nur im Speicher.
+  Wer neuen Zustand einführt, der ein Neuladen nicht überstehen soll, ergänzt ihn dort
+  in `idle()`. Details in [VEROEFFENTLICHEN.md](VEROEFFENTLICHEN.md).
 - **Steuerelemente der Karte** (Quellenangabe) sind per CSS über Tab-Leiste und Sheet
   angehoben. Vollbildkarten (`.rt-picker`, `.poi-picker`) setzen das zurück.
 

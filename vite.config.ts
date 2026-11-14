@@ -20,7 +20,8 @@ export default defineConfig(({ mode }) => ({
     // `npm run dev:phone` serves over HTTPS on the LAN so GPS works on a real phone.
     ...(mode === 'phone' ? [basicSsl()] : []),
     VitePWA({
-      registerType: 'autoUpdate',
+      // 'prompt': a new version waits until src/updates.ts lets it take over (not during a ride)
+      registerType: 'prompt',
       includeAssets: ['icons/*.png', 'icons/icon.svg'],
       manifest: {
         name: 'Bikepath – Fahrrad Navigation',

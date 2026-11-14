@@ -59,7 +59,10 @@ curl -s https://jonnycamaro.github.io/bikepath/manifest.webmanifest
 Kennzeichen, dass Chrome im Menü **„Installieren"** anbietet und nicht nur
 „Verknüpfung erstellen".
 
-Die installierte App aktualisiert sich beim nächsten Start selbst, nicht sofort.
+Die installierte App sucht beim Start, bei jeder Rückkehr in den Vordergrund und
+stündlich nach einer neuen Fassung (`src/updates.ts`). Umgeschaltet wird mit einem
+Neuladen, aber nur ohne laufende Fahrt und ohne offene Planung. Dem Nutzer sagen:
+App wegwischen und neu öffnen ist der schnellste Weg.
 
 ## Wenn etwas schiefgeht
 
@@ -68,7 +71,7 @@ Die installierte App aktualisiert sich beim nächsten Start selbst, nicht sofort
 | Weiße Seite, 404 auf die JS-Datei | Basispfad falsch. `BASE_PATH` im Workflow muss zum Repository-Namen passen. |
 | Chrome bietet nur „Verknüpfung erstellen" | Manifest, Service Worker oder HTTPS stimmen nicht zusammen. Manifest live abrufen und `scope` prüfen. |
 | Lauf schlägt bei `npm test` fehl | Zuerst lokal reproduzieren. `tests/session.test.ts` arbeitet mit echten Zeitgebern und braucht rund 17 Sekunden; bei knapper CI kann es eng werden. |
-| Änderung ist am Handy nicht da | App schließen und neu starten, damit der Service Worker die neue Fassung holt. |
+| Änderung ist am Handy nicht da | Läuft eine Fahrt oder ist eine Planung offen, wartet die neue Fassung absichtlich. Sonst App wegwischen und neu starten. |
 
 ## Nie tun
 

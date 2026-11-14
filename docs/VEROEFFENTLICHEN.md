@@ -45,10 +45,25 @@ und HTTPS zusammen stimmen. Steht dort nur „Verknüpfung erstellen", fehlt etw
 
 ## Aktualisierung auf dem Handy
 
-Der Service Worker ist auf `autoUpdate` gestellt. Die installierte App holt sich
-eine neue Fassung beim nächsten Start selbst – nicht sofort, sondern wenn sie
-das nächste Mal geöffnet wird. Wer sofort sehen will, ob etwas angekommen ist,
-schließt die App und startet sie neu.
+Android hält eine installierte Web-App im Speicher. Ein Tipp aufs Symbol holt nur
+die alte Seite nach vorn, ohne neu zu laden – die übliche Update-Prüfung beim
+Seitenaufruf läuft dann nicht. Deshalb steuert `src/updates.ts` das selbst:
+
+- **Prüfen:** beim Start, bei jeder Rückkehr in die App (höchstens einmal pro
+  Minute) und stündlich, solange die App offen ist.
+- **Umschalten:** Der Service Worker steht auf `registerType: 'prompt'`; eine neue
+  Fassung wartet, bis die App sie übernehmen lässt. Das passiert nur, wenn nichts
+  verloren geht: keine Fahrt, keine Planung (die lebt nur im Speicher), kein
+  Startdialog. Sonst holt die App es nach, sobald die Fahrt endet oder die Planung
+  gelöscht ist, oder wenn die App in den Hintergrund geht.
+- Beim Umschalten lädt die Seite einmal neu.
+
+Wer sofort prüfen will: App in der App-Übersicht wegwischen und neu öffnen, ein
+paar Sekunden warten.
+
+Einmalig beim Wechsel von `autoUpdate` auf `prompt` (November 2026): Die alte
+Fassung auf dem Handy kennt die neue Logik noch nicht. Die neue Fassung wartet
+dort, bis die App einmal ganz geschlossen und wieder geöffnet wird.
 
 ## Was nicht ins Repository gehört
 
