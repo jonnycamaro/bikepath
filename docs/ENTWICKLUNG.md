@@ -52,6 +52,9 @@ Testbarkeit.
 | `speech.ts`, `wakelock.ts`, `batterySave.ts` | Sprachausgabe, Display anlassen, Energiesparen |
 | `roundtrip.ts` | Rundtour-Suche: kein Kreis, sondern Wendepunkt in der gewählten Richtung; Vorgabe als Distanz oder Fahrzeit; Hinweg frei geroutet, Rückweg mit Strafkosten auf dem Hinweg; Zwischenstopps werden eingereiht (weitester Stopp = Wendepunkt); `LoopProblem` meldet, wenn Stopps nicht in Umfang oder Richtung passen, samt Lösungswert |
 | `customProfile.ts` | Eigene Routenoptionen: Datenmodell, Vorlagen und `brouterScript()`, das daraus ein vollständiges BRouter-Profil erzeugt |
+| `openingHours.ts` | Eigener Leser für `opening_hours` (nach der OSM-Formatbeschreibung), „jetzt geöffnet“ und Zeiten je Tag |
+| `holidays.ts` | Gesetzliche Feiertage je Bundesland (für `PH`) |
+| `placeDetails.ts` | Ortsdetails laden: Nominatim (OSM-Tags), Wikipedia-Zusammenfassung, Commons-Foto mit Urheber |
 | `bike.ts` | Fahrradtypen und das Tempo daraus (`rideSpeed`): Grundlage für Fahrzeiten, Ankunft und Rundtouren nach Zeit; die Routenoption verschiebt es nur leicht |
 
 ### store.ts – was die Oberfläche sieht
@@ -192,6 +195,27 @@ Einstellungen ein **vollständiges BRouter-Profil**, `routing.ts` lädt es per
 - **Alle Treffer:** Enter (`onSubmit`) holt bis zu 40 Treffer, legt sie in
   `store.searchResults` und zeichnet sie als Ebene `search-dot` in `MapView.tsx`.
   `setTab` räumt sie und die Ortskarte (`placeCard`) beim Tabwechsel ab.
+
+## Ortsdetails
+
+`PlaceDetails.tsx` lädt beim Anzeigen eines Orts dessen Details (`loadPlaceDetails`).
+
+- **Welches OSM-Objekt:** `Place.osm` („N123“, „W456“, „R789“). Bei Kachel-POIs steckt es in der
+  Kennung: OpenMapTiles kodiert `osm_id × 10 + 1/2/3` für Node/Way/Relation
+  (`osmRefFromTileId`). Photon liefert `osm_type` und `osm_id` direkt.
+- **Nominatim** (`/lookup?…&extratags=1&addressdetails=1`) liefert die OSM-Tags und die Adresse.
+  Nutzungsregeln: höchstens 1 Anfrage pro Sekunde, nur auf Abruf, keine Massenabfragen. Die
+  Warteschlange in `placeDetails.ts` hält den Abstand ein, Ergebnisse werden gemerkt.
+- **Wikipedia/Commons:** nur wenn das OSM-Objekt `wikipedia`/`wikidata` trägt. Fotos nur von
+  Commons (dort sind Urheber und Lizenz abrufbar und werden am Bild angezeigt); Bilder nur auf
+  einer lokalen Wikipedia oder fremde `image`-Links werden nicht gezeigt. Wikipedia hängt
+  `?utm_…` an Bildadressen – `commonsFileFromUrl` schneidet das ab.
+- **Öffnungszeiten:** `openingHours.ts` ist bewusst eine eigene Umsetzung nach
+  https://wiki.openstreetmap.org/wiki/Key:opening_hours/specification. **Keinen Code aus
+  opening_hours.js übernehmen** – die Bibliothek steht unter LGPL, eine Bearbeitung wäre es
+  auch. Was der Leser nicht versteht (Schulferien, Sonnenauf-/-untergang, Kommentare, „+“,
+  Wochennummern, Einzeldaten), gibt `null`; die App zeigt dann den Originaltext und keinen
+  Öffnungsstatus.
 
 ## Lizenzen und Quellenangaben
 

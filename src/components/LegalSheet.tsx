@@ -28,6 +28,10 @@ const SOURCES: Source[] = [
   },
   { name: 'BRouter', use: 'Routenberechnung; Vorlage für eigene Routenoptionen (Profil „trekking“)', notice: 'BRouter von Arndt Brenschede · Daten © OpenStreetMap-Mitwirkende', license: 'BRouter-Profile: MIT', url: 'https://github.com/abrensch/brouter' },
   { name: 'Photon (komoot)', use: 'Orts- und Adresssuche', notice: 'Photon von komoot · Daten © OpenStreetMap-Mitwirkende', url: 'https://photon.komoot.io' },
+  { name: 'Nominatim (OpenStreetMap Foundation)', use: 'Details zu Orten: Öffnungszeiten, Adresse, Kontakt', notice: 'Daten © OpenStreetMap-Mitwirkende', license: 'ODbL 1.0', url: 'https://nominatim.org' },
+  { name: 'Wikipedia', use: 'Kurzbeschreibungen von Sehenswürdigkeiten', notice: 'Text aus der Wikipedia, jeweils mit Link zum Artikel', license: 'CC BY-SA 4.0', url: 'https://de.wikipedia.org' },
+  { name: 'Wikimedia Commons', use: 'Fotos von Orten', notice: 'Urheber und Lizenz stehen am jeweiligen Foto', license: 'je Bild (meist CC BY-SA)', url: 'https://commons.wikimedia.org' },
+  { name: 'Wikidata', use: 'Verknüpfung von Orten mit Wikipedia-Artikeln', notice: 'Daten von Wikidata', license: 'CC0', url: 'https://www.wikidata.org' },
   { name: 'Open-Meteo', use: 'Wetter und Wind', notice: 'Wetterdaten von Open-Meteo.com', license: 'CC BY 4.0', url: 'https://open-meteo.com' },
 ];
 

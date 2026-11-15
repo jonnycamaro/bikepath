@@ -66,7 +66,7 @@ export function decodePoiTile(buf: ArrayBuffer | Uint8Array, x: number, y: numbe
     const g = f.toGeoJSON(x, y, POI_TILE_ZOOM).geometry;
     if (g.type !== 'Point') continue;
     const [lon, lat] = g.coordinates as [number, number];
-    out.push({ id: f.id ?? x * 1e9 + y * 1e4 + i, lon, lat, type, name: p['name:de'] || p.name_de || p.name || undefined });
+    out.push({ id: f.id ?? -(x * 1e9 + y * 1e4 + i), lon, lat, type, name: p['name:de'] || p.name_de || p.name || undefined });
   }
   return out;
 }

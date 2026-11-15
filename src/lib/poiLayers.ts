@@ -1,4 +1,5 @@
 import type { GeoJSONSource, Map as MLMap, MapGeoJSONFeature } from 'maplibre-gl';
+import { osmRefFromTileId } from './placeDetails';
 import { POI_META, type Poi } from './pois';
 
 /**
@@ -116,5 +117,6 @@ export function zoomIntoCluster(m: MLMap, source: string, f: MapGeoJSONFeature) 
 export function poiPlace(f: MapGeoJSONFeature) {
   const meta = POI_META[f.properties.type];
   const [lon, lat] = (f.geometry as GeoJSON.Point).coordinates;
-  return { id: `poi-${f.properties.pid}`, name: (f.properties.name as string) || meta.label, detail: meta.label, lngLat: [lon, lat] as [number, number], kind: f.properties.type as string };
+  const pid = Number(f.properties.pid);
+  return { id: `poi-${pid}`, name: (f.properties.name as string) || meta.label, detail: meta.label, lngLat: [lon, lat] as [number, number], kind: f.properties.type as string, osm: osmRefFromTileId(pid) };
 }

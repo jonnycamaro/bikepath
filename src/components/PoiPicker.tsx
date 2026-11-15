@@ -10,6 +10,7 @@ import { PICKER_TYPES, POI_META, type Poi } from '../lib/pois';
 import { useStore } from '../store';
 import { mapRef } from './MapView';
 import ExternalLinks from './ExternalLinks';
+import PlaceDetails from './PlaceDetails';
 import { IconCheck, IconClose, IconFilter } from './icons';
 
 /** the POI map needs a vector style (its tiles carry the places); raster styles fall back to this */
@@ -202,6 +203,9 @@ export default function PoiPicker({ title, onPick, onClose, center: around }: { 
             <button className="btn primary block" style={{ margin: '10px 0 8px' }} onClick={() => onPick(sel)} data-testid="poi-take">
               <IconCheck size={18} /> Übernehmen
             </button>
+            <div className="poi-card-details">
+              <PlaceDetails place={sel} />
+            </div>
             <ExternalLinks place={sel} />
           </div>
         ) : (

@@ -14,6 +14,7 @@ import RoutesScreen from './components/RoutesScreen';
 import ProfileScreen from './components/ProfileScreen';
 import SearchBox from './components/SearchBox';
 import ExternalLinks from './components/ExternalLinks';
+import PlaceDetails from './components/PlaceDetails';
 import LegalSheet from './components/LegalSheet';
 import ProfileEditor from './components/ProfileEditor';
 import { BikeSheet } from './components/BikeSheet';
@@ -107,7 +108,7 @@ function PlaceCard({ place, onClose }: { place: Place; onClose: () => void }) {
     onClose();
   };
   return (
-    <div className="sheet" data-testid="place-card">
+    <div className="sheet place-sheet" data-testid="place-card">
       <div className="grab" />
       <div className="body">
         <div className="row">
@@ -122,6 +123,7 @@ function PlaceCard({ place, onClose }: { place: Place; onClose: () => void }) {
           <button className="btn primary grow" onClick={routeHere} data-testid="route-here"><IconNavigate size={18} /> Route hierher</button>
           <button className="btn grow" onClick={() => { s.setWaypoints([{ id: 'p' + Date.now(), lngLat: place.lngLat, name: place.name }]); s.setTab('plan'); onClose(); }}>Als Start</button>
         </div>
+        <PlaceDetails place={place} />
         <div className="spacer" />
         <ExternalLinks place={place} />
       </div>
@@ -227,15 +229,25 @@ function PlanPlaceCard({ place, onClose }: { place: Place; onClose: () => void }
       m.remove();
     };
   }, [place]);
+  const [more, setMore] = useState(false);
   const role = s.loop ? 'Als Zwischenstopp' : s.waypoints.length === 0 ? 'Als Start' : s.waypoints.length === 1 ? 'Als Ziel' : 'Als weiteren Punkt';
   return (
-    <div className="plan-place" data-testid="plan-place">
-      <div className="grow" style={{ minWidth: 0 }}>
-        <div className="poi-card-name">{place.name}</div>
-        {place.detail && <div className="muted small ellipsis">{place.detail}</div>}
+    <div className="plan-place-wrap" data-testid="plan-place">
+      <div className="plan-place">
+        <button className="grow plan-place-title" onClick={() => setMore(!more)} aria-expanded={more} data-testid="plan-place-more">
+          <div className="poi-card-name">{place.name}</div>
+          <div className="muted small ellipsis">{more ? 'Weniger anzeigen' : place.detail ? `${place.detail} · Details` : 'Details'}</div>
+        </button>
+        <button className="btn primary sm" onClick={() => { s.addWaypoint(place.lngLat, place.name); onClose(); }} data-testid="plan-place-add">{role}</button>
+        <button className="icon-btn" onClick={onClose} aria-label="Schließen"><IconClose size={18} /></button>
       </div>
-      <button className="btn primary sm" onClick={() => { s.addWaypoint(place.lngLat, place.name); onClose(); }} data-testid="plan-place-add">{role}</button>
-      <button className="icon-btn" onClick={onClose} aria-label="Schließen"><IconClose size={18} /></button>
+      {more && (
+        <div className="plan-place-details">
+          <PlaceDetails place={place} />
+          <div className="spacer" />
+          <ExternalLinks place={place} />
+        </div>
+      )}
     </div>
   );
 }

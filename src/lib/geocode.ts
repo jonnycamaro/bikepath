@@ -6,6 +6,8 @@ export interface Place {
   detail: string;
   lngLat: LngLat;
   kind: string;
+  /** OpenStreetMap object ("N123", "W456", "R789") for loading details */
+  osm?: string;
 }
 
 const PHOTON = 'https://photon.komoot.io';
@@ -28,6 +30,7 @@ export function parsePhoton(json: any): Place[] {
       detail,
       lngLat: [f.geometry.coordinates[0], f.geometry.coordinates[1]] as LngLat,
       kind: f.properties?.osm_value ?? f.properties?.type ?? '',
+      osm: /^[NWR]$/.test(f.properties?.osm_type ?? '') && f.properties?.osm_id ? `${f.properties.osm_type}${f.properties.osm_id}` : undefined,
     };
   });
 }

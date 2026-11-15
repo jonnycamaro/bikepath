@@ -18,6 +18,7 @@ Unter `.claude/skills/` liegen zusätzlich Anleitungen für Claude Code
 ## Funktionen
 
 - **Suche:** Lupe oben rechts auf Karte, Planen und Navigieren. Ein Vorschlag zoomt zum Ort; Enter bzw. „Alle Treffer auf der Karte zeigen“ zeigt alle Treffer (bis 40) als Punkte mit Liste, nach Entfernung sortiert. Beim Planen wird um den letzten Routenpunkt gesucht, sonst um den sichtbaren Kartenausschnitt.
+- **Ortsdetails:** Ein angetippter Ort (POI oder Suchtreffer) zeigt Adresse, Öffnungszeiten mit „Jetzt geöffnet/geschlossen“ und Wochenübersicht (inkl. Feiertagen je Bundesland), Merkmale wie Rollstuhl oder WLAN, Küche, Anrufen/Webseite/E-Mail und bei Sehenswürdigkeiten Wikipedia-Text und Foto mit Urheberangabe. Quellen: OpenStreetMap (über Nominatim), Wikipedia, Wikimedia Commons, Wikidata.
 - **Karte:** Suche (Adressen, Orte, Koordinaten), eigener Standort mit Folgemodus und Fahrtrichtung, 7 Kartenstile, 3D-Gelände, Ebenen (Radrouten, MTB-Routen, Relief, POIs). Langes Drücken auf die Karte öffnet „Route hierher“.
 - **POIs:** Cafés, Restaurants, Supermärkte, Trinkwasser, WCs, Radläden, Sehenswürdigkeiten, Unterkünfte und mehr aus OpenStreetMap – 14 Kategorien, einzeln wählbar. Als Kartenebene zuschaltbar; herausgezoomt fassen Kreise mit Anzahl nahe Orte zusammen, ein Tipp zoomt hinein. Ein angetippter Ort zeigt Name, Kategorie und Links „Google Maps“ und „Tripadvisor“.
 - **Planen:**
@@ -117,6 +118,7 @@ React 18, TypeScript, Vite, MapLibre GL, zustand, idb-keyval, vite-plugin-pwa (W
 | Rasterkarten | CyclOSM, OSM, OpenTopoMap, Esri |
 | Höhen | AWS Terrain Tiles |
 | POIs | OpenStreetMap-Daten aus den OpenFreeMap-Vektorkacheln |
+| Ortsdetails | Nominatim (OpenStreetMap), Wikipedia, Wikimedia Commons, Wikidata |
 | Wetter | Open-Meteo |
 
 Alle Dienste sind kostenlos und brauchen keinen API-Schlüssel. Kartendaten © OpenStreetMap-Mitwirkende.

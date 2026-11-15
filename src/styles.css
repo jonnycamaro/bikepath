@@ -432,3 +432,38 @@ textarea.input { height: auto; padding: 10px 14px; resize: none; font-family: in
 .all-results .t { color: var(--primary); }
 :root[data-theme='dark'] .results-bar { background: var(--bg-soft); }
 :root[data-theme='dark'] .results-title { color: var(--text); }
+/* place details (OpenStreetMap / Wikipedia) */
+.pd { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+.pd-image { margin: 0; border-radius: 12px; overflow: hidden; background: var(--bg-soft); }
+.pd-image img { display: block; width: 100%; max-height: 190px; object-fit: cover; }
+.pd-image figcaption { font-size: 10.5px; padding: 4px 8px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pd-image figcaption a { color: inherit; }
+.pd-address { font-size: 14px; }
+.pd-row { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; color: inherit; }
+.pd-label { font-size: 12.5px; color: var(--muted); font-weight: 600; }
+.pd-raw { font-size: 13.5px; }
+.pd-status { font-weight: 700; font-size: 14px; flex: 1; }
+.pd-status.open { color: var(--green); }
+.pd-status.closed { color: var(--red); }
+.pd-more { font-size: 12.5px; color: var(--primary); font-weight: 600; }
+.pd-week { width: 100%; border-collapse: collapse; font-size: 13.5px; margin-top: 4px; }
+.pd-week td { padding: 3px 0; vertical-align: top; }
+.pd-week td:first-child { width: 42%; color: var(--muted); }
+.pd-week tr.today td { font-weight: 700; color: var(--navy); }
+.pd-line { font-size: 13.5px; }
+.pd-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.pd-tag { font-size: 12px; font-weight: 600; padding: 4px 9px; border-radius: 10px; background: var(--bg-soft); }
+.pd-contact { display: flex; gap: 8px; flex-wrap: wrap; }
+.pd-contact .btn { text-decoration: none; }
+.pd-text { font-size: 13.5px; line-height: 1.45; margin: 0; }
+.pd-wiki a { font-size: 13px; color: var(--primary); display: inline-flex; gap: 4px; align-items: center; margin-top: 4px; }
+.pd-source { font-size: 11px; color: var(--muted); }
+.pd-source a { color: inherit; }
+.poi-card-details { max-height: 38vh; overflow-y: auto; margin-bottom: 8px; }
+.plan-place-wrap { display: flex; flex-direction: column; gap: 6px; }
+.plan-place-title { text-align: left; min-width: 0; color: inherit; }
+.plan-place-details { background: #fff; border-radius: 14px; box-shadow: var(--shadow); padding: 2px 14px 12px; max-height: 55vh; overflow-y: auto; }
+:root[data-theme='dark'] .pd-tag { background: #222b37; }
+:root[data-theme='dark'] .plan-place-details { background: var(--bg-soft); color: var(--text); }
+:root[data-theme='dark'] .pd-week tr.today td { color: var(--text); }
+.sheet.place-sheet { max-height: 64%; }
