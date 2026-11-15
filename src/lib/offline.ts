@@ -13,6 +13,8 @@ export interface OfflineRegion {
   styleUrl: string;
   tileTemplates: string[];
   createdAt: number;
+  /** tiles of a corridor along a route ("z/x/y"); without it the region is the whole bbox */
+  tileKeys?: string[];
 }
 
 export function lon2tile(lon: number, z: number) {
@@ -49,7 +51,8 @@ export const MAX_TILES = 30_000;
 
 async function cacheUrl(cache: Cache, url: string): Promise<number> {
   const hit = await cache.match(url);
-  if (hit) return Number(hit.headers.get('content-length') ?? 0) || 0;
+  // already cached (e.g. seen on the map before): count its real size, the header is often missing
+  if (hit) return Number(hit.headers.get('content-length')) || (await hit.blob()).size;
   const res = await fetch(url, { mode: 'cors' });
   if (!res.ok && res.status !== 204) throw new Error(`HTTP ${res.status}`);
   const buf = await res.clone().arrayBuffer();
@@ -100,11 +103,68 @@ export async function downloadRegion(
   signal?: AbortSignal,
   zoom: [number, number] = [6, 14],
 ): Promise<OfflineRegion> {
+  return downloadTiles(name, bbox, (maxZ) => tilesInBbox(bbox, zoom[0], maxZ), styleUrl, onProgress, signal, zoom, false);
+}
+
+const WORLD_M = 40075016.686;
+/**
+ * Tiles to ride a route without network: the whole area at the overview zooms (6–11), and a
+ * corridor along the route at the detail zooms (12–14) – each point's tile and its neighbours,
+ * so the map around the track and its places (zoom 14 carries the POIs) are there.
+ */
+export function routeTiles(coords: [number, number][], maxZ = 14): [number, number, number][] {
+  let w = 180, s = 90, e = -180, n = -90;
+  for (const [x, y] of coords) {
+    w = Math.min(w, x); e = Math.max(e, x); s = Math.min(s, y); n = Math.max(n, y);
+  }
+  const pad = 0.02;
+  const out = new Map<string, [number, number, number]>();
+  for (const t of tilesInBbox([w - pad, s - pad, e + pad, n + pad], 6, Math.min(11, maxZ))) out.set(t.join('/'), t);
+  for (let z = 12; z <= maxZ; z++) {
+    // sample the track about every half tile so no tile it crosses is skipped
+    const step = (WORLD_M / 2 ** z) * Math.cos((((s + n) / 2) * Math.PI) / 180) * 0.5;
+    let last: [number, number] | null = null;
+    for (const c of coords) {
+      if (last && Math.hypot((c[0] - last[0]) * 111320 * Math.cos((c[1] * Math.PI) / 180), (c[1] - last[1]) * 110540) < step) continue;
+      last = c;
+      const tx = lon2tile(c[0], z);
+      const ty = lat2tile(c[1], z);
+      for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) out.set(`${z}/${tx + dx}/${ty + dy}`, [z, tx + dx, ty + dy]);
+    }
+  }
+  return [...out.values()];
+}
+
+/** Store the map along a route for offline use (style, fonts, tiles of the corridor). */
+export async function downloadRouteMaps(
+  name: string,
+  coords: [number, number][],
+  styleUrl: string,
+  onProgress: (done: number, total: number) => void,
+  signal?: AbortSignal,
+): Promise<OfflineRegion> {
+  let w = 180, s = 90, e = -180, n = -90;
+  for (const [x, y] of coords) {
+    w = Math.min(w, x); e = Math.max(e, x); s = Math.min(s, y); n = Math.max(n, y);
+  }
+  return downloadTiles(name, [w, s, e, n], (maxZ) => routeTiles(coords, maxZ), styleUrl, onProgress, signal, [6, 14], true);
+}
+
+async function downloadTiles(
+  name: string,
+  bbox: [number, number, number, number],
+  tilesFor: (maxZ: number) => [number, number, number][],
+  styleUrl: string,
+  onProgress: (done: number, total: number) => void,
+  signal: AbortSignal | undefined,
+  zoom: [number, number],
+  keepKeys: boolean,
+): Promise<OfflineRegion> {
   if (!('caches' in window)) throw new Error('Offline-Speicher wird von diesem Browser nicht unterstützt');
   const cache = await caches.open(TILE_CACHE);
   const { assets, templates, maxzoom } = await styleAssets(styleUrl);
   const maxZ = Math.min(zoom[1], maxzoom);
-  const tiles = tilesInBbox(bbox, zoom[0], maxZ);
+  const tiles = tilesFor(maxZ);
   if (tiles.length > MAX_TILES) throw new Error('Bereich zu groß – bitte weiter hineinzoomen');
   const urls = [
     ...assets,
@@ -140,6 +200,7 @@ export async function downloadRegion(
     styleUrl,
     tileTemplates: templates.slice(0, 1),
     createdAt: Date.now(),
+    ...(keepKeys ? { tileKeys: tiles.map((x) => x.join('/')) } : {}),
   };
   await kvSet('offlineRegions', [...(await listRegions()), region]);
   return region;
@@ -153,11 +214,13 @@ export async function deleteRegion(id: string) {
   if (!r || !('caches' in window)) return;
   const cache = await caches.open(TILE_CACHE);
   // keep tiles that are still covered by another region
+  const keysOf = (o: OfflineRegion) => o.tileKeys ?? tilesInBbox(o.bbox, o.minZoom, o.maxZoom).map((t) => t.join('/'));
   const keep = new Set<string>();
-  for (const o of rest) for (const [z, x, y] of tilesInBbox(o.bbox, o.minZoom, o.maxZoom)) keep.add(`${z}/${x}/${y}`);
+  for (const o of rest) for (const k of keysOf(o)) keep.add(k);
   await Promise.all(
-    tilesInBbox(r.bbox, r.minZoom, r.maxZoom)
-      .filter(([z, x, y]) => !keep.has(`${z}/${x}/${y}`))
+    keysOf(r)
+      .filter((k) => !keep.has(k))
+      .map((k) => k.split('/').map(Number) as [number, number, number])
       .map(([z, x, y]) => cache.delete(r.tileTemplates[0].replace('{z}', String(z)).replace('{x}', String(x)).replace('{y}', String(y)))),
   );
 }

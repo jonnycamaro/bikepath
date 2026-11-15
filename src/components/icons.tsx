@@ -54,6 +54,8 @@ export const IconPen = (p: P) => <S {...p}><path d="M3 21c3-1 5-6 9-6s4 4 9 2" /
 export const IconCompass = (p: P) => <S {...p}><circle cx="12" cy="12" r="9" /><path d="m12 5 3 7h-6Z" fill="#e53935" stroke="#e53935" /><path d="m12 19-3-7h6Z" /></S>;
 export const Icon3D = (p: P) => <S {...p}><path d="M12 3 4 7.5v9L12 21l8-4.5v-9Z" /><path d="M4 7.5 12 12l8-4.5M12 12v9" /></S>;
 export const IconOffline = (p: P) => <S {...p}><path d="M12 3v10M8 9l4 4 4-4" /><path d="M5 15v4h14v-4" /></S>;
+/** stored on the device for riding without network: tray with a check mark */
+export const IconOfflineReady = (p: P) => <S {...p}><path d="m8 8.5 3 3 5.5-6" /><path d="M4 14v5.5h16V14" /><path d="M4 14h4l1.5 2h5L16 14h4" /></S>;
 export const IconFlag = (p: P) => <S {...p}><path d="M5 21V4h11l-2 4 2 4H5" /></S>;
 /** map pin with a star: points of interest */
 export const IconPoi = (p: P) => <S {...p}><path d="M12 22s-7-6.2-7-12a7 7 0 0 1 14 0c0 5.8-7 12-7 12Z" /><path d="m12 6.6 1.1 2.2 2.4.3-1.75 1.7.4 2.4L12 12.1l-2.15 1.1.4-2.4L8.5 9.1l2.4-.3Z" /></S>;

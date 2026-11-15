@@ -104,13 +104,17 @@ export function setPois(m: MLMap, source: string, pois: Poi[], types: string[]) 
   });
 }
 
-/** Zoom in until the tapped circle splits up. */
-export function zoomIntoCluster(m: MLMap, source: string, f: MapGeoJSONFeature) {
+/**
+ * Zoom in until the tapped circle splits up. `coveredBottom` is the height (px) hidden by a
+ * bottom sheet and tab bar: the circle is centred in the part of the map that stays visible.
+ */
+export function zoomIntoCluster(m: MLMap, source: string, f: MapGeoJSONFeature, coveredBottom = 0) {
+  const offset: [number, number] = [0, -coveredBottom / 2];
   const at = (f.geometry as GeoJSON.Point).coordinates as [number, number];
   (m.getSource(source) as GeoJSONSource)
     .getClusterExpansionZoom(f.properties.cluster_id)
-    .then((z) => m.easeTo({ center: at, zoom: Math.min(z + 0.2, 19), duration: 450 }))
-    .catch(() => m.easeTo({ center: at, zoom: m.getZoom() + 2, duration: 450 }));
+    .then((z) => m.easeTo({ center: at, zoom: Math.min(z + 0.2, 19), duration: 450, offset }))
+    .catch(() => m.easeTo({ center: at, zoom: m.getZoom() + 2, duration: 450, offset }));
 }
 
 /** The place behind a tapped POI symbol. */

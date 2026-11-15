@@ -354,7 +354,7 @@ const km = (m: number) => `${Math.round(m / 1000)} km`;
 /** Compute a round trip for `spec` with the routing option `profileId`. */
 export async function computeRoundTrip(spec: LoopSpec, profileId: string, opts: RoundTripOptions = {}): Promise<Route> {
   const chosen = profileById(profileId);
-  const profile: RoutingProfile = chosen.brouter ? chosen : profileById('balanced');
+  const profile: RoutingProfile = chosen;
   const track = opts.track ?? fetchTrack;
   const req = { signal: opts.signal, params: opts.params };
   const speed = opts.speedKmh ?? chosen.speedKmh;

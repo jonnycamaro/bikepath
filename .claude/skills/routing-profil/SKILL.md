@@ -24,7 +24,6 @@ Alles Nötige steht in `src/lib/routing.ts`. Planer und Einstellungen lesen
 
 - **`brouter`** ist ein Profilname des öffentlichen BRouter-Servers:
   `trekking`, `fastbike`, `fastbike-lowtraffic`, `safety`, `mtb`, `shortest`.
-  `null` bedeutet Freihand – gerade Linien ohne Routing.
 - **`params`** werden als `profile:<name>=<wert>` an die Anfrage gehängt und
   überschreiben einzelne Variablen des BRouter-Profils. Gebräuchlich:
   `allow_steps`, `avoid_unsafe`, `stick_to_cycleroutes`.

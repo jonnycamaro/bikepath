@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { reverseGeocode } from '../lib/geocode';
 import { bikeById, rideSpeed } from '../lib/bike';
 import { bearing, formatDistance, formatDuration } from '../lib/geo';
@@ -7,14 +8,15 @@ import { fetchWeather, headwindShare, weatherLabel, type Weather } from '../lib/
 
 import { bboxOf, useStore } from '../store';
 import ElevationChart from './ElevationChart';
-import { IconLocate, IconClose, IconDown, IconDownload, IconLoop, IconNavigate, IconPen, IconRedo, IconSave, IconSwap, IconTrash, IconUndo, IconUp, IconWind } from './icons';
+import { IconLocate, IconDown, IconDownload, IconLoop, IconNavigate, IconPen, IconRedo, IconStar, IconTrash, IconUndo, IconUp, IconWind } from './icons';
 import PlanModeChoice from './PlanModeChoice';
 import RouteInsights from './RouteInsights';
 import SearchBox from './SearchBox';
 import { compassName } from '../lib/roundtrip';
 import { BikeSelector } from './BikeSheet';
+import { RouteSymbol } from './routeSymbols';
 import { DirBadge } from './RoundTripSheet';
-import { ProfileSelector } from './Sheets';
+import { Modal, ProfileSelector } from './Sheets';
 
 export default function PlannerSheet() {
   const s = useStore();
@@ -22,6 +24,7 @@ export default function PlannerSheet() {
   const [size, setSize] = useState<'collapsed' | 'half' | 'full'>('half');
   const collapsed = size === 'collapsed';
   const [weather, setWeather] = useState<Weather | null>(null);
+  const [confirmClear, setConfirmClear] = useState(false);
   const named = useRef(new Set<string>());
   const sheetRef = useRef<HTMLDivElement>(null);
 
@@ -33,6 +36,12 @@ export default function PlannerSheet() {
       reverseGeocode(w.lngLat).then((n) => n && useStore.getState().renameWaypoint(w.id, n));
     }
   }, [waypoints]);
+
+  // a route point tapped on the map: bring it into view in the list
+  useEffect(() => {
+    if (!s.selectedWaypoint) return;
+    document.querySelector(`[data-wp="${s.selectedWaypoint}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [s.selectedWaypoint]);
 
   // A trip starts at the GPS position when there is one – once per chosen trip, so a
   // start the user removed stays removed. Clearing the plan asks for the kind again.
@@ -132,8 +141,8 @@ export default function PlannerSheet() {
           <h2 className="grow" style={{ margin: 0 }}>{s.editingId ? s.planName || 'Route bearbeiten' : 'Route planen'}</h2>
           <button className="icon-btn" onClick={s.undoPlan} disabled={!s.undo.length} aria-label="Rückgängig"><IconUndo size={20} /></button>
           <button className="icon-btn" onClick={s.redoPlan} disabled={!s.redo.length} aria-label="Wiederholen"><IconRedo size={20} /></button>
-          <button className="icon-btn" onClick={s.reverse} disabled={!loop && waypoints.length < 2} aria-label="Richtung umkehren"><IconSwap size={20} /></button>
-          <button className="icon-btn" onClick={s.clearPlan} disabled={!waypoints.length} aria-label="Route löschen"><IconTrash size={20} /></button>
+          <button className="icon-btn" onClick={() => s.setSheet('save')} disabled={!route} aria-label="Als Favorit speichern" data-testid="plan-fav" style={s.editingId ? { color: 'var(--orange)' } : undefined}><IconStar size={20} filled={!!s.editingId} /></button>
+          <button className="icon-btn" onClick={() => setConfirmClear(true)} disabled={!waypoints.length} aria-label="Route löschen"><IconTrash size={20} /></button>
         </div>
 
         {route && !collapsed && (
@@ -160,7 +169,7 @@ export default function PlannerSheet() {
 
         {waypoints.length === 0 && !choosing && (
           <>
-            <div className="hint">Tippe auf die Karte, um den Start zu setzen – oder suche einen Ort.</div>
+            <div className="hint">Tippe auf die Karte oder suche einen Ort – unten erscheint er dann mit „Als Start“.</div>
             <div className="spacer" />
             <div className="row" style={{ alignItems: 'flex-start' }}>
               <div className="grow">
@@ -179,26 +188,16 @@ export default function PlannerSheet() {
           <div className="wps" data-testid="waypoints">
             {waypoints.map((w, i) => {
               const kind = i === 0 ? 'start' : i === waypoints.length - 1 && !loop ? 'end' : 'via';
-              const color = kind === 'start' ? 'var(--green)' : kind === 'end' ? 'var(--red)' : 'var(--primary)';
               return (
-                <div key={w.id}>
-                  <div className="wp">
-                    <div className="dot" style={{ background: color }}>{kind === 'start' ? 'A' : kind === 'end' ? 'B' : i}</div>
-                    <div className="name">{w.name ?? `${w.lngLat[1].toFixed(5)}, ${w.lngLat[0].toFixed(5)}`}</div>
+                // timeline: the same symbols as in the half-ring menu, joined by a dotted line
+                <div key={w.id} className={`tl-item ${i < waypoints.length - 1 ? 'has-next' : ''} ${w.id === s.selectedWaypoint ? 'selected' : ''}`} data-kind={kind} data-wp={w.id}>
+                  <div className="tl-node"><RouteSymbol kind={kind} size={30} /></div>
+                  <div className="wp grow">
+                    <button className="name" onClick={() => s.selectWaypoint(w.id, true)} data-testid="wp-select">{w.name ?? `${w.lngLat[1].toFixed(5)}, ${w.lngLat[0].toFixed(5)}`}</button>
                     {!loop && i > 0 && <button className="icon-btn" style={{ width: 32, height: 32 }} onClick={() => { const n = [...waypoints]; [n[i - 1], n[i]] = [n[i], n[i - 1]]; s.setWaypoints(n); }} aria-label="Nach oben"><IconUp size={16} /></button>}
                     {!loop && i < waypoints.length - 1 && <button className="icon-btn" style={{ width: 32, height: 32 }} onClick={() => { const n = [...waypoints]; [n[i + 1], n[i]] = [n[i], n[i + 1]]; s.setWaypoints(n); }} aria-label="Nach unten"><IconDown size={16} /></button>}
-                    <button className="icon-btn" style={{ width: 32, height: 32 }} onClick={() => s.removeWaypoint(w.id)} aria-label="Punkt entfernen"><IconClose size={16} /></button>
+                    <button className="icon-btn" style={{ width: 32, height: 32 }} onClick={() => s.removeWaypoint(w.id)} aria-label="Punkt entfernen"><IconTrash size={16} /></button>
                   </div>
-                  {!loop && i < waypoints.length - 1 && (
-                    <button
-                      className="small"
-                      style={{ marginLeft: 16, padding: '4px 8px', color: s.freehand.includes(i) ? 'var(--orange)' : 'var(--muted)', display: 'flex', gap: 6, alignItems: 'center' }}
-                      onClick={() => s.toggleFreehandLeg(i)}
-                      title="Abschnitt als gerade Linie zeichnen"
-                    >
-                      <IconPen size={14} /> {s.freehand.includes(i) ? 'Freihand-Abschnitt' : 'Abschnitt routen'}
-                    </button>
-                  )}
                 </div>
               );
             })}
@@ -216,8 +215,7 @@ export default function PlannerSheet() {
                   <button className="btn sm grow" onClick={() => s.setLoop({ ...loop, variant: loop.variant + 1 })} data-testid="loop-variant"><IconLoop size={16} /> Andere Variante</button>
                   <button className="btn sm grow" onClick={s.editLoopByHand} disabled={!route || routing}><IconPen size={16} /> Von Hand anpassen</button>
                 </div>
-                <SearchBox placeholder="Zwischenstopp hinzufügen" poiTitle="Zwischenstopp wählen" onSelect={(p) => s.addWaypoint(p.lngLat, p.name)} />
-                {waypoints.length === 1 && <div className="muted small" style={{ marginTop: 6 }}>Oder auf die Karte tippen – die Rundtour führt dann dort vorbei.</div>}
+                {waypoints.length === 1 && <div className="muted small" style={{ marginTop: 6 }}>Zwischenstopps über die Lupe oben oder durch Tippen auf die Karte hinzufügen.</div>}
                 {loopProblem && !routing && (
                   <div className="problem" role="alert" data-testid="loop-problem">
                     <b>{loopProblem.kind === 'direction' ? 'Der Zwischenstopp liegt in der anderen Richtung' : 'Die Zwischenstopps passen nicht in die Rundtour'}</b>
@@ -234,8 +232,7 @@ export default function PlannerSheet() {
               </>
             ) : (
               <>
-                {waypoints.length === 1 && <div className="hint">Tippe auf die Karte, um das Ziel zu setzen.</div>}
-                <SearchBox placeholder={waypoints.length === 1 ? 'Ziel suchen' : 'Weiteren Punkt hinzufügen'} poiTitle={waypoints.length === 1 ? 'Ziel wählen' : 'Weiteren Punkt wählen'} onSelect={(p) => s.addWaypoint(p.lngLat, p.name)} />
+                {waypoints.length === 1 && <div className="hint">Ziel über die Lupe oben suchen oder auf die Karte tippen und die Zielflagge wählen.</div>}
               </>
             )}
           </div>
@@ -284,20 +281,34 @@ export default function PlannerSheet() {
             )}
 
             <div className="spacer" />
-            <button className="btn primary block" onClick={() => useStore.getState().requestNavigation(route)} data-testid="start-nav">
-              <IconNavigate size={18} /> Navigation starten
-            </button>
-            <div className="spacer" />
-            <div className="row">
-              <button className="btn grow" onClick={() => s.setSheet('save')}><IconSave size={18} /> Speichern</button>
-              <button className="btn grow" onClick={() => downloadFile(`${safeFilename(s.planName || 'Bikepath-Route')}.gpx`, toGPX(s.planName || 'Bikepath Route', route.coords, undefined, route.waypoints), 'application/gpx+xml')}>
-                <IconDownload size={18} /> GPX
+            {/* the focus is on starting the ride; the GPX file is a small extra beside it */}
+            <div className="row start-row">
+              <button className="btn primary grow" onClick={() => useStore.getState().requestNavigation(route)} data-testid="start-nav">
+                <IconNavigate size={18} /> Navigation starten
               </button>
-              <button className="btn" onClick={() => s.setSheet('roundtrip')} aria-label="Rundtour"><IconLoop size={18} /></button>
+              <button
+                className="btn icon-only"
+                onClick={() => downloadFile(`${safeFilename(s.planName || 'Bikepath-Route')}.gpx`, toGPX(s.planName || 'Bikepath Route', route.coords, undefined, route.waypoints), 'application/gpx+xml')}
+                aria-label="Als GPX-Datei herunterladen"
+                title="Als GPX-Datei herunterladen"
+                data-testid="plan-gpx"
+              >
+                <IconDownload size={20} />
+              </button>
             </div>
           </>
         )}
       </div>
+      {confirmClear && createPortal(
+        <Modal title="Routenplanung verwerfen?" onClose={() => setConfirmClear(false)} testid="confirm-clear">
+          <p className="muted" style={{ marginTop: 0 }}>Alle Punkte der aktuellen Planung werden entfernt. Mit „Rückgängig“ lässt sie sich danach noch zurückholen.</p>
+          <div className="row">
+            <button className="btn grow" onClick={() => setConfirmClear(false)}>Abbrechen</button>
+            <button className="btn grow danger-fill" onClick={() => { s.clearPlan(); setConfirmClear(false); }} data-testid="confirm-clear-yes">Verwerfen</button>
+          </div>
+        </Modal>,
+        document.querySelector('.app') ?? document.body,
+      )}
     </div>
   );
 }

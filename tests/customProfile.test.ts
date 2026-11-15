@@ -86,3 +86,15 @@ describe('own routing options', () => {
     expect(calls.slice(4)).toEqual(['route']);
   });
 });
+
+describe('tap menu', () => {
+  it('greys out what makes no sense for the current plan', async () => {
+    const { enabledActions } = await import('../src/lib/tapActions');
+    expect(enabledActions({ waypoints: [], loop: null }, false)).toEqual({ start: true, via: false, end: true, info: true, delete: true });
+    expect(enabledActions({ waypoints: [1, 2], loop: null }, false)).toEqual({ start: true, via: true, end: true, info: true, delete: true });
+    // round trip: start and stops, but no separate destination
+    expect(enabledActions({ waypoints: [1], loop: {} }, false)).toEqual({ start: true, via: true, end: false, info: true, delete: true });
+    // while the address is looked up only the info works
+    expect(enabledActions({ waypoints: [1, 2], loop: null }, true)).toEqual({ start: false, via: false, end: false, info: true, delete: true });
+  });
+});

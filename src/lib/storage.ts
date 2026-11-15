@@ -17,12 +17,33 @@ export interface SavedRoute {
   /** only for recorded rides */
   ride?: { stats: RideStats; points: TrackPoint[]; startedAt: number };
   note?: string;
+  /** maps along the route are stored for riding without network (id of the OfflineRegion) */
+  offlineRegionId?: string;
 }
 
+/** A place kept as a favourite (POI, search result or any tapped point). */
+export interface SavedPlace {
+  id: string;
+  name: string;
+  /** category or address shown under the name */
+  detail: string;
+  lngLat: [number, number];
+  /** POI type (see pois.ts) or what the search reported */
+  kind: string;
+  /** OpenStreetMap object for its details */
+  osm?: string;
+  /** favourite group (Collection); none = "Ohne Gruppe" */
+  groupId?: string;
+  createdAt: number;
+}
+
+/** A favourite group (folder). Routes and places share the same groups. */
 export interface Collection {
   id: string;
   name: string;
   createdAt: number;
+  /** parent group for sub-groups; none = top level */
+  parentId?: string;
 }
 
 export type NavMode = 'ask' | 'turn-by-turn' | 'self-guided';
@@ -134,6 +155,11 @@ export async function loadCollections(): Promise<Collection[]> {
   return (await get<Collection[]>('collections', kvStore)) ?? [];
 }
 export const storeCollections = (c: Collection[]) => set('collections', c, kvStore);
+
+export async function loadPlaces(): Promise<SavedPlace[]> {
+  return (await get<SavedPlace[]>('places', kvStore)) ?? [];
+}
+export const storePlaces = (p: SavedPlace[]) => set('places', p, kvStore);
 
 export const kvGet = <T>(k: string) => get<T>(k, kvStore);
 export const kvSet = (k: string, v: unknown) => set(k, v, kvStore);

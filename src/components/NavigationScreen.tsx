@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { formatClock, formatDistance, formatSpeed } from '../lib/geo';
 import { pauseRide, resumeRide, stopRide, toggleMute } from '../session';
 import { bboxOf, useStore } from '../store';
+import { GroupPicker } from './Favorites';
 import ElevationChart from './ElevationChart';
 import { IconBike, IconChevron, IconClose, IconList, IconMap, IconMountain, IconMute, IconPause, IconPlay, IconStop, IconVolume, ManeuverIcon } from './icons';
 
@@ -98,6 +99,7 @@ export default function NavigationScreen() {
   const [confirmStop, setConfirmStop] = useState(false);
   const [cues, setCues] = useState(false);
   const [name, setName] = useState('');
+  const [group, setGroup] = useState<string | undefined>();
   const [editField, setEditField] = useState<string | null>(null);
   const [layoutPicker, setLayoutPicker] = useState(false);
   const gpsStatus = useStore((s) => s.gpsStatus);
@@ -129,9 +131,9 @@ export default function NavigationScreen() {
 
   const finish = async (save: boolean) => {
     setConfirmStop(false);
-    const saved = await stopRide(save, name.trim() || undefined);
+    const saved = await stopRide(save, name.trim() || undefined, group);
     if (saved) {
-      useStore.getState().toastMsg('Fahrt gespeichert');
+      useStore.getState().toastMsg('Fahrt in den Favoriten gespeichert');
       useStore.setState({ tab: 'routes' });
       useStore.getState().setDetail(saved.id);
     }
@@ -247,11 +249,14 @@ export default function NavigationScreen() {
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="head"><h2>Fahrt beenden?</h2><button onClick={() => setConfirmStop(false)} aria-label="Schließen"><IconClose /></button></div>
             <p className="muted">{formatDistance(session.stats.distance)} in {formatClock(session.stats.movingTime)} · ↑ {session.stats.ascent} m</p>
+            <p style={{ margin: '0 0 8px' }}>Soll die Fahrt gespeichert werden? Sonst wird sie verworfen.</p>
             <input className="input" placeholder="Name der Fahrt (optional)" value={name} onChange={(e) => setName(e.target.value)} />
+            <h3>Gruppe in den Favoriten</h3>
+            <GroupPicker value={group} onChange={setGroup} />
             <div className="spacer" />
             <button className="btn primary block" onClick={() => finish(true)} data-testid="save-ride">Fahrt speichern</button>
             <div className="spacer" />
-            <button className="btn block" onClick={() => finish(false)}>Verwerfen</button>
+            <button className="btn block" onClick={() => finish(false)} data-testid="discard-ride">Verwerfen</button>
           </div>
         </div>
       )}

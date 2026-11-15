@@ -7,16 +7,20 @@ import type { Route, Waypoint } from './lib/routing';
 import { rideSpeed } from './lib/bike';
 import { computeRoute, CYCLEPATH_PARAMS, PROFILES, setCustomProfiles } from './lib/routing';
 import { normalizeProfile, toRoutingProfile } from './lib/customProfile';
+import { waypointRole } from './lib/tapActions';
 import { computeRoundTrip, isLoopRoute, LoopProblem, type LoopSpec, type LoopStop } from './lib/roundtrip';
 import {
   DEFAULT_SETTINGS,
   listRoutes,
   loadCollections,
+  loadPlaces,
   loadSettings,
   storeCollections,
+  storePlaces,
   storeSettings,
   uid,
   type Collection,
+  type SavedPlace,
   type SavedRoute,
   type Settings,
 } from './lib/storage';
@@ -25,7 +29,6 @@ export type Tab = 'map' | 'plan' | 'record' | 'routes' | 'profile';
 
 interface PlanSnapshot {
   waypoints: Waypoint[];
-  freehand: number[];
   loop: LoopSpec | null;
 }
 
@@ -55,7 +58,6 @@ interface State {
   follow: 'off' | 'follow' | 'heading';
   // planner
   waypoints: Waypoint[];
-  freehand: number[]; // leg indices drawn freehand
   /** set while the plan is a round trip: the first waypoint is the start, further ones are stops on the way */
   loop: LoopSpec | null;
   /** why the round trip cannot be built as asked, with values that would fix it */
@@ -73,6 +75,8 @@ interface State {
   // library
   saved: SavedRoute[];
   collections: Collection[];
+  /** places kept as favourites */
+  places: SavedPlace[];
   detailId: string | null;
   preview: Route | null; // route shown on the map from the library
   // session
@@ -86,6 +90,12 @@ interface State {
   placeCard: Place | null;
   /** own routing option open in the editor: its id, 'new', or null */
   profileEditor: string | null;
+  /** place tapped on the map: the half-ring menu (start / stop / destination / info) is open on it */
+  tapMenu: Place | null;
+  /** metres along the shown route while the elevation profile is touched (null = not touched) */
+  chartHover: number | null;
+  /** route point the menu / card belongs to (highlighted in the planner list) */
+  selectedWaypoint: string | null;
   /** all results of a submitted search, shown as points on the map */
   searchResults: { query: string; places: Place[]; centre?: LngLat } | null;
 
@@ -99,6 +109,10 @@ interface State {
   toastMsg: (m: string) => void;
   setSheet: (s: State['sheet']) => void;
   showPlace: (p: Place | null) => void;
+  /** select a route point: highlighted in the list, fan (info / delete) on the map; `focus` also moves the map to it */
+  selectWaypoint: (id: string, focus?: boolean) => void;
+  /** put a place into the plan as start, destination or a stop on the way */
+  placeAs: (role: 'start' | 'end' | 'via', p: Place) => void;
   focusMap: (f: Omit<NonNullable<State['focus']>, 'id'>) => void;
 
   // planner actions
@@ -117,7 +131,6 @@ interface State {
   /** begin an empty plan: a trip goes straight to choosing the start, a round trip opens its sheet */
   startPlan: (kind: 'trip' | 'loop') => void;
   setProfile: (id: string) => void;
-  toggleFreehandLeg: (i: number) => void;
   undoPlan: () => void;
   redoPlan: () => void;
   recompute: () => Promise<void>;
@@ -125,6 +138,7 @@ interface State {
 
   refreshSaved: () => Promise<void>;
   setCollections: (c: Collection[]) => void;
+  setPlaces: (p: SavedPlace[]) => void;
   setDetail: (id: string | null) => void;
   setSession: (s: SessionView | null | ((p: SessionView | null) => SessionView | null)) => void;
 }
@@ -132,13 +146,16 @@ interface State {
 let routeAbort: AbortController | null = null;
 let routeTimer: ReturnType<typeof setTimeout> | null = null;
 
+/** current zoom of the main map (the store has no map; MapView exposes it for debugging and this) */
+const mapZoom = (): number => (globalThis as { __bikepathMap?: { getZoom(): number } }).__bikepathMap?.getZoom() ?? 15;
+
 /** Hand the own routing options to the router (profileById, fetchTrack). */
 function applyCustomProfiles(list: Settings['customProfiles'] = []) {
   setCustomProfiles(list.map((p) => toRoutingProfile(normalizeProfile(p))));
 }
 
 export const useStore = create<State>((set, get) => {
-  const snapshot = (): PlanSnapshot => ({ waypoints: get().waypoints, freehand: get().freehand, loop: get().loop });
+  const snapshot = (): PlanSnapshot => ({ waypoints: get().waypoints, loop: get().loop });
   const commit = (p: Partial<State>) => {
     set({ undo: [...get().undo.slice(-49), snapshot()], redo: [], ...p });
     scheduleRoute();
@@ -159,7 +176,6 @@ export const useStore = create<State>((set, get) => {
     pendingNav: null,
     follow: 'off',
     waypoints: [],
-    freehand: [],
     loop: null,
     loopProblem: null,
     profileId: 'balanced',
@@ -173,9 +189,13 @@ export const useStore = create<State>((set, get) => {
     placeCard: null,
     profileEditor: null,
     searchResults: null,
+    tapMenu: null,
+    selectedWaypoint: null,
+    chartHover: null,
     planName: '',
     saved: [],
     collections: [],
+    places: [],
     detailId: null,
     preview: null,
     session: null,
@@ -185,17 +205,18 @@ export const useStore = create<State>((set, get) => {
     offlineSelect: false,
 
     init: async () => {
-      const [settings, saved, collections] = await Promise.all([
+      const [settings, saved, collections, places] = await Promise.all([
         loadSettings().catch(() => DEFAULT_SETTINGS),
         listRoutes().catch(() => []),
         loadCollections().catch(() => []),
+        loadPlaces().catch(() => []),
       ]);
       applyCustomProfiles(settings.customProfiles);
       const known = (id: string) => PROFILES.some((p) => p.id === id) || settings.customProfiles.some((p) => p.id === id);
-      set({ settings, saved, collections, profileId: known(settings.defaultProfile) ? settings.defaultProfile : 'balanced', ready: true });
+      set({ settings, saved, collections, places, profileId: known(settings.defaultProfile) ? settings.defaultProfile : 'balanced', ready: true });
     },
     // a place card belongs to the tab it was opened on
-    setTab: (tab) => set({ tab, placeCard: null, searchResults: null, detailId: tab === 'routes' ? get().detailId : null, preview: tab === 'routes' ? get().preview : null }),
+    setTab: (tab) => set({ tab, placeCard: null, searchResults: null, tapMenu: null, selectedWaypoint: null, detailId: tab === 'routes' ? get().detailId : null, preview: tab === 'routes' ? get().preview : null }),
     setSettings: (p) => {
       const settings = { ...get().settings, ...p };
       if (p.customProfiles) {
@@ -219,7 +240,48 @@ export const useStore = create<State>((set, get) => {
     },
     toastMsg: (msg) => set({ toast: { msg, id: Date.now() } }),
     setSheet: (sheet) => set({ sheet }),
-    showPlace: (placeCard) => set({ placeCard }),
+    // closing the card also ends the highlight of a route point
+    showPlace: (placeCard) => set(placeCard ? { placeCard } : { placeCard: null, selectedWaypoint: null }),
+    selectWaypoint: (id, focus = false) => {
+      const s = get();
+      const i = s.waypoints.findIndex((w) => w.id === id);
+      if (i < 0) return;
+      const w = s.waypoints[i];
+      set({
+        placeCard: null,
+        selectedWaypoint: id,
+        tapMenu: { id: `wp-${id}`, name: w.name ?? 'Routenpunkt', detail: waypointRole(i, s.waypoints.length, !!s.loop), lngLat: w.lngLat, kind: 'waypoint', osm: w.osm },
+      });
+      if (focus) s.focusMap({ center: w.lngLat, zoom: Math.max(mapZoom(), 15) });
+    },
+    placeAs: (role, p) => {
+      const s = get();
+      // round trip: a new start moves the loop (its stops stay), anything else is a stop on the way
+      if (s.loop && role === 'start') return s.setLoop({ ...s.loop, start: p.lngLat }, p.name);
+      if (s.loop) return s.addWaypoint(p.lngLat, p.name); // the round trip sorts its stops itself
+      const wp = { id: uid(), lngLat: p.lngLat, name: p.name, osm: p.osm };
+      const wps = [...s.waypoints];
+      if (role === 'start') {
+        if (wps.length) wps[0] = wp;
+        else wps.push(wp);
+      } else if (role === 'end') {
+        if (!wps.length && s.fix) wps.push({ id: uid(), lngLat: s.fix.lngLat, name: 'Mein Standort' });
+        if (wps.length >= 2) wps[wps.length - 1] = wp;
+        else wps.push(wp);
+      } else if (wps.length < 2) wps.push(wp);
+      else {
+        // a stop goes into the leg where it costs the least detour
+        const d = (a: LngLat, b: LngLat) => Math.hypot((a[0] - b[0]) * Math.cos((a[1] * Math.PI) / 180), a[1] - b[1]);
+        let best = 1;
+        let bestCost = Infinity;
+        for (let i = 1; i < wps.length; i++) {
+          const cost = d(wps[i - 1].lngLat, p.lngLat) + d(p.lngLat, wps[i].lngLat) - d(wps[i - 1].lngLat, wps[i].lngLat);
+          if (cost < bestCost) [best, bestCost] = [i, cost];
+        }
+        wps.splice(best, 0, wp);
+      }
+      s.setWaypoints(wps);
+    },
     focusMap: (f) => set({ focus: { ...f, id: Date.now() } }),
 
     addWaypoint: (p, name, at) => {
@@ -240,18 +302,15 @@ export const useStore = create<State>((set, get) => {
       if (get().loop) return get().addWaypoint(p); // the round trip sorts its stops itself
       const wps = [...get().waypoints];
       wps.splice(legIndex + 1, 0, { id: uid(), lngLat: p });
-      // freehand flags shift for legs after the insert; the split leg keeps its mode for both halves
-      const fh = get().freehand.flatMap((i) => (i < legIndex ? [i] : i === legIndex ? [i, i + 1] : [i + 1]));
-      commit({ waypoints: wps, freehand: fh });
+      commit({ waypoints: wps });
     },
     removeWaypoint: (id) => {
       const idx = get().waypoints.findIndex((w) => w.id === id);
-      const fh = get().freehand.filter((i) => i !== idx && i !== idx - 1).map((i) => (i > idx ? i - 1 : i));
       // a round trip stays one when a stop goes; without its start it is an ordinary plan again
-      commit({ waypoints: get().waypoints.filter((w) => w.id !== id), freehand: fh, ...(idx === 0 ? { loop: null } : {}) });
+      commit({ waypoints: get().waypoints.filter((w) => w.id !== id), ...(idx === 0 ? { loop: null } : {}) });
     },
     renameWaypoint: (id, name) => set({ waypoints: get().waypoints.map((w) => (w.id === id ? { ...w, name } : w)) }),
-    setWaypoints: (waypoints, record = true) => (record ? commit({ waypoints, freehand: [], loop: null }) : (set({ waypoints }), scheduleRoute())),
+    setWaypoints: (waypoints, record = true) => (record ? commit({ waypoints, loop: null }) : (set({ waypoints }), scheduleRoute())),
     setLoop: (spec, name, stops) => {
       const wps = get().waypoints;
       const cur = wps[0];
@@ -259,7 +318,7 @@ export const useStore = create<State>((set, get) => {
       const first = keep ? { ...cur, name: name ?? cur.name } : { id: uid(), lngLat: spec.start, name };
       // stops are kept as waypoints; without a new list the ones already planned stay
       const rest = stops ? stops.map((p) => ({ id: p.id ?? uid(), lngLat: p.lngLat, name: p.name })) : get().loop ? wps.slice(1) : [];
-      commit({ waypoints: [first, ...rest], freehand: [], loop: { ...spec, stops: undefined }, route: keep ? get().route : null });
+      commit({ waypoints: [first, ...rest], loop: { ...spec, stops: undefined }, route: keep ? get().route : null });
     },
     editLoopByHand: () => {
       const r = get().route;
@@ -274,7 +333,7 @@ export const useStore = create<State>((set, get) => {
         const c = r.coords[k];
         return { id: uid(), lngLat: [c[0], c[1]] as LngLat, name: i === 0 || i === n - 1 ? name : undefined };
       });
-      commit({ waypoints: wps, freehand: [], loop: null });
+      commit({ waypoints: wps, loop: null });
     },
     reverse: () => {
       const loop = get().loop;
@@ -282,21 +341,16 @@ export const useStore = create<State>((set, get) => {
         commit({ loop: { ...loop, reversed: !loop.reversed } });
         return;
       }
-      const n = get().waypoints.length;
-      commit({ waypoints: [...get().waypoints].reverse(), freehand: get().freehand.map((i) => n - 2 - i) });
+      commit({ waypoints: [...get().waypoints].reverse() });
     },
     clearPlan: () => {
       routeAbort?.abort();
-      set({ undo: [...get().undo, snapshot()], redo: [], waypoints: [], freehand: [], loop: null, loopProblem: null, route: null, routing: false, routeError: null, editingId: null, planName: '', planKind: null });
+      set({ undo: [...get().undo, snapshot()], redo: [], waypoints: [], loop: null, loopProblem: null, route: null, routing: false, routeError: null, editingId: null, planName: '', planKind: null });
     },
     startPlan: (kind) => (kind === 'loop' ? set({ planKind: null, sheet: 'roundtrip' }) : set({ planKind: 'trip' })),
     setProfile: (profileId) => {
       set({ profileId });
       scheduleRoute();
-    },
-    toggleFreehandLeg: (i) => {
-      const fh = get().freehand.includes(i) ? get().freehand.filter((x) => x !== i) : [...get().freehand, i];
-      commit({ freehand: fh });
     },
     undoPlan: () => {
       const u = get().undo;
@@ -313,7 +367,7 @@ export const useStore = create<State>((set, get) => {
       scheduleRoute();
     },
     recompute: async () => {
-      const { waypoints, profileId, freehand, settings, loop } = get();
+      const { waypoints, profileId, settings, loop } = get();
       routeAbort?.abort();
       if (!loop && waypoints.length < 2) {
         set({ route: null, routing: false, routeError: null, loopProblem: null });
@@ -335,7 +389,6 @@ export const useStore = create<State>((set, get) => {
             : await computeRoute(waypoints, profileId, {
                 signal: ctrl.signal,
                 speedKmh: speed,
-                freehandLegs: new Set(freehand),
                 params: CYCLEPATH_PARAMS[pref],
               });
           if (ctrl.signal.aborted) return;
@@ -370,13 +423,12 @@ export const useStore = create<State>((set, get) => {
           const c = s.route.coords[k];
           return { id: uid(), lngLat: [c[0], c[1]] as LngLat };
         });
-        set({ route: s.route, waypoints: wps, freehand: [], loop: null, editingId: s.id, planName: s.name, tab: 'plan', undo: [], redo: [] });
+        set({ route: s.route, waypoints: wps, loop: null, editingId: s.id, planName: s.name, tab: 'plan', undo: [], redo: [] });
         get().focusMap({ bbox: bboxOf(s.route) });
         return;
       }
       set({
         waypoints: s.route.waypoints,
-        freehand: [],
         loop: null,
         profileId: s.route.profileId,
         editingId: s.id,
@@ -393,6 +445,10 @@ export const useStore = create<State>((set, get) => {
     setCollections: (collections) => {
       set({ collections });
       storeCollections(collections).catch(() => {});
+    },
+    setPlaces: (places) => {
+      set({ places });
+      storePlaces(places).catch(() => {});
     },
     setDetail: (detailId) => {
       const s = get().saved.find((x) => x.id === detailId);

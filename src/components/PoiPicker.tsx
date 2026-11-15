@@ -113,7 +113,7 @@ export default function PoiPicker({ title, onPick, onClose, center: around }: { 
     m.on('click', (e) => {
       const [f] = m.queryRenderedFeatures(e.point, { layers: [ids.cluster, ids.point] });
       if (!f) setSel(null);
-      else if (f.layer.id === ids.cluster) zoomIntoCluster(m, 'poi', f);
+      else if (f.layer.id === ids.cluster) zoomIntoCluster(m, 'poi', f, 64); // the status line at the bottom
       else setSel(poiPlace(f));
     });
     for (const l of [ids.cluster, ids.point]) {

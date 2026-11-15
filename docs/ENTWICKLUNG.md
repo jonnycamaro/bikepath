@@ -51,6 +51,8 @@ Testbarkeit.
 | `mapStyles.ts`, `routeStyle.ts` | Kartenstile, Overlays, Einfärbung nach Steigung |
 | `speech.ts`, `wakelock.ts`, `batterySave.ts` | Sprachausgabe, Display anlassen, Energiesparen |
 | `roundtrip.ts` | Rundtour-Suche: kein Kreis, sondern Wendepunkt in der gewählten Richtung; Vorgabe als Distanz oder Fahrzeit; Hinweg frei geroutet, Rückweg mit Strafkosten auf dem Hinweg; Zwischenstopps werden eingereiht (weitester Stopp = Wendepunkt); `LoopProblem` meldet, wenn Stopps nicht in Umfang oder Richtung passen, samt Lösungswert |
+| `tapActions.ts` | Aktionen des Fächers (Start, Zwischenziel, Ziel, Info, Löschen), welche gerade möglich sind, Rollenname eines Routenpunkts |
+| `groups.ts` | Favoriten-Gruppen als Baum: Kinder, Pfad („Reise Eifel › Tag 1“), Löschen mit Hochziehen der Inhalte |
 | `customProfile.ts` | Eigene Routenoptionen: Datenmodell, Vorlagen und `brouterScript()`, das daraus ein vollständiges BRouter-Profil erzeugt |
 | `openingHours.ts` | Eigener Leser für `opening_hours` (nach der OSM-Formatbeschreibung), „jetzt geöffnet“ und Zeiten je Tag |
 | `holidays.ts` | Gesetzliche Feiertage je Bundesland (für `PH`) |
@@ -95,7 +97,7 @@ In `src/lib/routing.ts` einen Eintrag in `PROFILES` ergänzen:
 ```
 
 - `brouter` ist ein Profilname des BRouter-Servers (`trekking`, `fastbike`,
-  `fastbike-lowtraffic`, `safety`, `mtb`, `shortest`). `null` bedeutet Freihand ohne Routing.
+  `fastbike-lowtraffic`, `safety`, `mtb`, `shortest`). Eine Freihand-Option (gerade Linien) gibt es nicht mehr.
 - `params` wird als `profile:<name>=<wert>` angehängt und überschreibt einzelne
   Variablen des BRouter-Profils.
 - `icon` ist ein Schlüssel in `PROFILE_GLYPHS` und `PROFILE_COLORS` (`src/components/icons.tsx`).
@@ -154,10 +156,61 @@ mit Offline-Karten. Overpass wurde dafür aufgegeben: Die öffentlichen Server w
   zurück, dann fragt der Planer wieder.
 - **Start = eigener Standort:** Bei gewählter Strecke setzt `PlannerSheet` die GPS-Position
   einmal als Start. Entfernt der Nutzer ihn, bleibt er weg.
-- **Suchfelder mit POI-Karte:** `SearchBox` mit `poiTitle` zeigt rechts das POI-Symbol und
-  öffnet `PoiPicker`. Ein Tipp auf einen Ort zeigt eine Karte mit „Übernehmen“ und den Links.
+- **Orte kommen nur über die Lupe oben oder einen Tipp in die Karte** (Fächer). Unter der
+  Punkteliste und im Rundtour-Fenster gibt es bewusst kein Eingabefeld (Wunsch des Nutzers).
+  Nur bei ganz leerer Planung gibt es ein Startfeld mit Standort-Knopf.
+- **Punkteliste als Zeitleiste:** gleiche Symbole wie im Fächer (`routeSymbols.tsx`),
+  Mülleimer je Punkt, Reihenfolge per Pfeilen. Ein Tipp auf den Namen wählt den Punkt
+  (`selectWaypoint(id, true)`): Karte fliegt hin, Fächer mit Info/Löschen, Zeile markiert.
+- **Kopf des Planers:** Rückgängig, Wiederholen, Stern (als Favorit speichern), Papierkorb
+  (fragt nach). Unten nur „Navigation starten“ und ein schmaler GPX-Knopf.
+- **Keine Freihand-Option mehr** (gerade Linien ohne Routing): komplett entfernt.
 - **Simulation** ist ein Schalter im Startdialog (`StartNavDialog.tsx`, standardmäßig aus)
   und wird an `startNavigation(route, { simulate })` übergeben.
+
+## Tippen in die Karte: der Fächer
+
+- Ein Tipp in die Karte (Karte, Planen, Navigieren ohne Fahrt) setzt eine Nadel und öffnet
+  `TapMenu.tsx`: Halbkreis über der Nadel, nur Symbole, Pastellfarben, gleich breite Spalten
+  (der Schnitt je Radius ist `asin(gap/2 / r)`). Was gerade nicht geht, ist grau
+  (`enabledActions`). Passt der Fächer nicht ins Bild, verschiebt sich die Karte.
+- Was dort ist, ermittelt `reversePlace()` (Photon): benannter Ort in ≤ 40 m, sonst Adresse
+  mit Hausnummer, sonst nächste Straße. Solange das läuft, geht nur „Info“.
+- Ein Routenpunkt (Marker oder Listeneintrag) bekommt einen Fächer mit nur **Info** und
+  **Löschen**, mittig auf dem runden Marker. Die geplante Route samt Punkten ist dafür auf
+  Karte, Planen und Navigieren sichtbar; Ziehen geht nur im Planer.
+- **Routenlinie:** Nur echtes Ziehen (> 10 px) fügt einen Punkt ein; ein Tipp öffnet den Fächer.
+- Ein weiterer Tipp in die Karte schließt Fächer bzw. Ortskarte.
+
+## Favoriten
+
+- Tab „Favoriten“ (intern weiter `routes`): gespeicherte Routen (`SavedRoute`, auch Fahrten
+  und Importe) und Orte (`SavedPlace`, IndexedDB-Schlüssel `places`).
+- **Gruppen** sind die bisherigen `Collection`s, jetzt mit `parentId` als Baum, für Routen und
+  Orte gemeinsam. Eine Route liegt in genau einer Gruppe (`collectionIds[0]`), ein Ort in
+  `groupId`. Löschen zieht Inhalte und Untergruppen eine Ebene hoch (`removeGroup`).
+- Speichern: Stern im Planer (`SaveSheet`), Stern in der Ortskarte (`SavePlaceSheet`),
+  Frage beim Beenden einer Fahrt (`NavigationScreen`). Überall `GroupPicker` mit Baum und
+  „Neue Gruppe“ / „Untergruppe in …“.
+- **Offline speichern** (Routen-Detail): `downloadRouteMaps()` lädt Übersichtsstufen 6–11 für
+  das ganze Gebiet und einen Korridor (Kachel + Nachbarn) in 12–14 entlang der Strecke,
+  dazu Stil, Schriften und Sprites. Die Region steht in `offlineRegions` mit `tileKeys`;
+  `SavedRoute.offlineRegionId` verweist darauf. Grünes Symbol in der Liste.
+
+## Karte ausrichten
+
+Alles, was auf einen Punkt oder eine Route zoomt, berücksichtigt den vom unteren Fenster
+und der Tab-Leiste verdeckten Teil (`--sheet-h` + 64 px): `focusMap` (Fokus-Effekt in
+`MapView.tsx`, korrigiert in der ersten Sekunde nach, wenn das Fenster erst später seine
+Höhe bekommt – außer der Nutzer hat die Karte bewegt) und `zoomIntoCluster` (POI-Kreise,
+`coveredBottom()`). Neue Kamera-Fahrten sollten dasselbe tun.
+
+## Routen-Infos und Höhenprofil
+
+- Die gewählte Einfärbung (Untergrund, Wegtyp, Steigung) gilt für die geplante Route, die
+  Navigation und die Vorschau aus den Favoriten (`preview`-Ebene).
+- Beim Abfahren des Höhenprofils legt `ElevationChart` die Position in `store.chartHover`;
+  `RouteInsights` hebt den passenden Legenden-Eintrag fett hervor.
 
 ## Eigene Routenoptionen
 

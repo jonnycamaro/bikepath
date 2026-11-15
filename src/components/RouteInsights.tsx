@@ -24,6 +24,21 @@ export default function RouteInsights({ route }: { route: Route }) {
   }
   const total = rows.reduce((a, r) => a + r.distance, 0) || 1;
 
+  // while the elevation profile is touched: the category at that spot is shown in bold
+  const at = useStore((s) => s.chartHover);
+  let current: string | null = null;
+  if (at != null) {
+    let i = route.cum.findIndex((c) => c >= at);
+    if (i < 0) i = route.coords.length - 1;
+    if (mode === 'surface' || mode === 'solid') current = route.pointSurface[i] ?? null;
+    else if (mode === 'waytype') current = route.pointWayType[i] ?? null;
+    else {
+      const g = Math.abs(grades(route)[i] ?? 0);
+      const k = GRADE_COLORS.findIndex((c) => g < c.max);
+      current = GRADE_COLORS[k < 0 ? 3 : k].label;
+    }
+  }
+
   return (
     <div data-testid="insights">
       <div className="segmented">
@@ -43,7 +58,7 @@ export default function RouteInsights({ route }: { route: Route }) {
           </div>
           <div className="legend">
             {rows.map((r) => (
-              <div key={r.key}>
+              <div key={r.key} className={r.key === current ? 'current' : ''} data-testid={r.key === current ? 'legend-current' : undefined}>
                 <span className="sw" style={{ background: r.color }} />
                 {r.label} <span className="muted">{formatDistance(r.distance)} · {Math.round((r.distance / total) * 100)} %</span>
               </div>

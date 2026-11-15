@@ -2,6 +2,8 @@ import maplibregl, { type GeoJSONSource, type Map as MLMap } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useEffect, useRef, useState } from 'react';
 import { snapToLine, type LngLat } from '../lib/geo';
+import { reversePlace } from '../lib/geocode';
+import { PLACE_LOADING } from '../lib/tapActions';
 import { styleById, styleFor, TERRAIN_TILES } from '../lib/mapStyles';
 import { cachedPois, loadPoiTiles, MAX_POI_TILES, poiTileTemplate, tilesFor } from '../lib/poiTiles';
 import { addPoiLayers, poiLayerIds, poiPlace, setPois, setPoiVisible, zoomIntoCluster } from '../lib/poiLayers';
@@ -11,6 +13,16 @@ import type { Route } from '../lib/routing';
 import { useStore } from '../store';
 
 export const mapRef: { current: MLMap | null } = { current: null };
+
+/** tabs where tapping the map shows what is there (instead of doing nothing) */
+const TAP_TABS = ['map', 'plan', 'record'];
+
+/** px at the bottom of the map hidden by the open sheet and the tab bar (none on wide screens) */
+export function coveredBottom(): number {
+  if (window.innerWidth > 760) return 0;
+  return (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sheet-h')) || 0) + 64;
+}
+
 
 const EMPTY = { type: 'FeatureCollection' as const, features: [] };
 
@@ -53,7 +65,7 @@ function addAppLayers(map: MLMap) {
   };
   casing('preview-casing', 'preview');
   if (!map.getLayer('preview-line'))
-    map.addLayer({ id: 'preview-line', type: 'line', source: 'preview', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#7c3aed', 'line-width': ['interpolate', ['linear'], ['zoom'], 8, 3, 16, 8] } });
+    map.addLayer({ id: 'preview-line', type: 'line', source: 'preview', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ['coalesce', ['get', 'color'], '#7c3aed'], 'line-width': ['interpolate', ['linear'], ['zoom'], 8, 3, 16, 8] } });
   casing('route-casing', 'route');
   if (!map.getLayer('route-line'))
     map.addLayer({ id: 'route-line', type: 'line', source: 'route', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 8, 3.5, 16, 9] } });
@@ -136,6 +148,11 @@ export default function MapView() {
       const s = useStore.getState();
       // a search result: zoom there and show its card
       const [hitResult] = s.searchResults && map.getLayer('search-dot') ? map.queryRenderedFeatures(e.point, { layers: ['search-dot'] }) : [];
+      // a tap while the menu or a place card is open just closes it
+      if (s.tapMenu || (s.placeCard && TAP_TABS.includes(s.tab))) {
+        useStore.setState({ tapMenu: null, placeCard: null, selectedWaypoint: null });
+        return;
+      }
       if (hitResult) {
         const place = s.searchResults!.places[hitResult.properties.i as number];
         if (place) {
@@ -148,15 +165,22 @@ export default function MapView() {
       const ids = poiLayerIds('pois');
       if (s.settings.overlays.includes('pois') && map.getLayer(ids.cluster)) {
         const [f] = map.queryRenderedFeatures(e.point, { layers: [ids.cluster, ids.point] });
-        if (f?.layer.id === ids.cluster) return zoomIntoCluster(map, 'pois', f);
-        if (f && s.tab === 'plan') return s.addWaypoint(poiPlace(f).lngLat, poiPlace(f).name);
-        if (f && s.tab === 'map') return s.showPlace(poiPlace(f));
+        if (f?.layer.id === ids.cluster) return zoomIntoCluster(map, 'pois', f, coveredBottom());
+        if (f && TAP_TABS.includes(s.tab) && !(s.tab === 'record' && s.session)) return useStore.setState({ tapMenu: poiPlace(f) });
       }
-      if (s.tab === 'plan') {
-        const hit = map.queryRenderedFeatures(e.point, { layers: ['route-line'] });
-        if (hit.length && s.waypoints.length >= 2 && !s.loop) return; // handled by drag logic
-        s.addWaypoint([e.lngLat.lng, e.lngLat.lat]); // in a round trip: a stop on the way
-      }
+      if (!TAP_TABS.includes(s.tab) || (s.tab === 'record' && s.session)) return;
+      // a tap on the map: the half-ring menu opens there; what is there is looked up meanwhile
+      const at: LngLat = [e.lngLat.lng, e.lngLat.lat];
+      const placeholder = { id: `tap-${at[0]},${at[1]}`, name: PLACE_LOADING, detail: `${at[1].toFixed(5)}, ${at[0].toFixed(5)}`, lngLat: at, kind: 'coord' };
+      useStore.setState({ tapMenu: placeholder });
+      reversePlace(at)
+        .catch(() => ({ ...placeholder, name: 'Punkt auf der Karte' }))
+        .then((p) => {
+          // only if the rider has not tapped somewhere else meanwhile (menu or the info card opened from it)
+          const st = useStore.getState();
+          if (st.tapMenu?.id === placeholder.id) useStore.setState({ tapMenu: p });
+          if (st.placeCard?.id === placeholder.id) useStore.setState({ placeCard: p });
+        });
     });
     // Long-press / right-click: plan a route to here
     map.on('contextmenu', (e) => {
@@ -195,7 +219,12 @@ export default function MapView() {
       const a = s.waypoints[leg].lngLat;
       const b = s.waypoints[leg + 1].lngLat;
       let cur = startP;
+      // only a real drag inserts a point; a plain tap on the line shows the place card instead
+      let moved = false;
+      const startPx = e.point;
       const move = (ev: maplibregl.MapMouseEvent | maplibregl.MapTouchEvent) => {
+        if (!moved && Math.hypot(ev.point.x - startPx.x, ev.point.y - startPx.y) < 10) return;
+        moved = true;
         cur = [ev.lngLat.lng, ev.lngLat.lat];
         (map.getSource('drag-ghost') as GeoJSONSource).setData(lineFC([a, cur, b]));
       };
@@ -204,6 +233,10 @@ export default function MapView() {
         map.off('touchmove', move);
         (map.getSource('drag-ghost') as GeoJSONSource).setData(EMPTY);
         map.getCanvas().style.cursor = '';
+        if (!moved) {
+          dragging.current = false; // let the click that follows open the place card
+          return;
+        }
         setTimeout(() => (dragging.current = false), 50);
         useStore.getState().insertWaypoint(leg, cur);
       };
@@ -314,7 +347,7 @@ export default function MapView() {
   useEffect(() => {
     const map = mapRef.current;
     if (!loaded || !styleReady(map)) return;
-    const show = route && tab === 'plan';
+    const show = route && TAP_TABS.includes(tab) && !session;
     (map.getSource('route') as GeoJSONSource)?.setData(show ? colouredLines(route!, settings.routeColorMode) : EMPTY);
   }, [route, loaded, settings.routeColorMode, session, tab]);
 
@@ -323,8 +356,10 @@ export default function MapView() {
     const map = mapRef.current;
     if (!loaded || !styleReady(map)) return;
     const show = preview && tab === 'routes';
-    (map.getSource('preview') as GeoJSONSource)?.setData(show ? lineFC(preview!.coords.map((c) => [c[0], c[1]])) : EMPTY);
-  }, [preview, loaded, tab, session]);
+    // coloured by surface / way type / gradient like the planned route; plain violet otherwise
+    const mode = settings.routeColorMode;
+    (map.getSource('preview') as GeoJSONSource)?.setData(!show ? EMPTY : mode === 'solid' ? lineFC(preview!.coords.map((c) => [c[0], c[1]])) : colouredLines(preview!, mode));
+  }, [preview, loaded, tab, session, settings.routeColorMode]);
 
   // session route + recorded track
   const navRoute: Route | null = session?.route ?? null;
@@ -345,7 +380,8 @@ export default function MapView() {
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    const visible = tab === 'plan';
+    // the planned route's points show wherever a tap can act on them; dragging only in the planner
+    const visible = TAP_TABS.includes(tab) && !(tab === 'record' && session);
     const ids = new Set(visible ? waypoints.map((w) => w.id) : []);
     for (const [id, m] of markers.current) {
       if (!ids.has(id)) {
@@ -360,7 +396,7 @@ export default function MapView() {
       const label = kind === 'start' ? 'A' : kind === 'end' ? 'B' : String(i);
       let m = markers.current.get(w.id);
       if (!m) {
-        m = new maplibregl.Marker({ element: makeWpEl(kind, label), draggable: true }).setLngLat(w.lngLat).addTo(map);
+        m = new maplibregl.Marker({ element: makeWpEl(kind, label), draggable: tab === 'plan' }).setLngLat(w.lngLat).addTo(map);
         m.on('dragstart', () => (dragging.current = true));
         m.on('dragend', () => {
           const ll = m!.getLngLat();
@@ -369,14 +405,16 @@ export default function MapView() {
         });
         m.getElement().addEventListener('click', (ev) => {
           ev.stopPropagation();
-          // tapping a via point removes it (start/end are removed in the sheet)
+          if (dragging.current) return;
+          // a route point: fan with info and delete; the point is highlighted in the planner list
           const st = useStore.getState();
-          const idx = st.waypoints.findIndex((x) => x.id === w.id);
-          if (idx > 0 && (idx < st.waypoints.length - 1 || st.loop)) st.removeWaypoint(w.id);
+          if (st.selectedWaypoint === w.id && st.tapMenu) return useStore.setState({ tapMenu: null, selectedWaypoint: null });
+          st.selectWaypoint(w.id);
         });
         markers.current.set(w.id, m);
       } else {
         m.setLngLat(w.lngLat);
+        m.setDraggable(tab === 'plan');
         const el = m.getElement();
         el.className = `wp-marker ${kind} maplibregl-marker`;
         el.textContent = label;
@@ -413,19 +451,47 @@ export default function MapView() {
     }
   }, [fix, follow, session?.nav, settings.terrain3d]);
 
-  // focus requests
+  // focus requests: fit into the part of the map that is not covered by the bottom sheet
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !focus) return;
     useStore.setState({ follow: 'off' });
-    if (focus.bbox) {
-      const [w, s, e, n] = focus.bbox;
-      // keep the route clear of the bottom sheet + tab bar
-      const sheetH = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sheet-h')) || 0;
-      const desktop = window.innerWidth > 760;
-      const bottom = Math.min(window.innerHeight * 0.7, (desktop ? 0 : sheetH) + 64 + 50);
-      map.fitBounds([[w, s], [e, n]], { padding: { top: 70, bottom, left: desktop ? 440 : 40, right: 64 }, maxZoom: 16, duration: 700 });
-    } else if (focus.center) map.flyTo({ center: focus.center, zoom: focus.zoom ?? 15, duration: 800 });
+    const desktop = window.innerWidth > 760;
+    const sheetH = () => (desktop ? 0 : parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sheet-h')) || 0);
+    const apply = (h: number, duration: number) => {
+      if (focus.bbox) {
+        const [w, s, e, n] = focus.bbox;
+        const bottom = Math.min(window.innerHeight * 0.7, h + 64 + 40);
+        map.fitBounds([[w, s], [e, n]], { padding: { top: 80, bottom, left: desktop ? 440 : 40, right: 76 }, maxZoom: 16, duration });
+      } else if (focus.center) {
+        // centre it in the visible part above the sheet and tab bar
+        map.flyTo({ center: focus.center, zoom: focus.zoom ?? 15, duration, offset: [0, -(h + 64) / 2] });
+      }
+    };
+    // The sheet that belongs to the focus (place card, route details) usually appears only now
+    // and grows when its details arrive: follow its height for a moment, unless the rider has
+    // started moving the map meanwhile.
+    let lastH = sheetH();
+    let userMoved = false;
+    const onUser = (e: { originalEvent?: unknown }) => {
+      if (e.originalEvent) userMoved = true;
+    };
+    map.on('dragstart', onUser);
+    map.on('zoomstart', onUser);
+    apply(lastH, 700);
+    const timers = [120, 450, 1000, 1800].map((ms) =>
+      setTimeout(() => {
+        const h = sheetH();
+        if (userMoved || Math.abs(h - lastH) < 24) return;
+        lastH = h;
+        apply(h, 350);
+      }, ms),
+    );
+    return () => {
+      timers.forEach(clearTimeout);
+      map.off('dragstart', onUser);
+      map.off('zoomstart', onUser);
+    };
   }, [focus]);
 
   return <div id="map" ref={container} data-testid="map" />;

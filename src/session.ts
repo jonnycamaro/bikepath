@@ -69,7 +69,7 @@ async function reroute(fix: Fix) {
   try {
     const cur = engine.route;
     const state = engine.update(fix);
-    const profile = cur.profileId === 'freehand' ? 'balanced' : cur.profileId;
+    const profile = cur.profileId;
     const speed = rideSpeed(st.settings, cur.profileId);
     const target = baseRoute ?? cur;
     let next: Route | null = null;
@@ -137,7 +137,7 @@ export async function resolveMissedStop(action: 'skip' | 'back') {
     const rest = cur.waypoints.filter((w, i) => i > 0 && !skippedWaypoints.has(w.id));
     if (rest.length) {
       const st = useStore.getState();
-      const profile = cur.profileId === 'freehand' ? 'balanced' : cur.profileId;
+      const profile = cur.profileId;
       const speed = rideSpeed(st.settings, cur.profileId);
       rerouting = true;
       push();
@@ -158,7 +158,7 @@ export async function resolveMissedStop(action: 'skip' | 'back') {
     const wp = cur.waypoints.find((w) => w.id === missed.id);
     if (!wp) return;
     const st = useStore.getState();
-    const profile = cur.profileId === 'freehand' ? 'balanced' : cur.profileId;
+    const profile = cur.profileId;
     const speed = rideSpeed(st.settings, cur.profileId);
     const idx = cur.waypoints.indexOf(wp);
     const rest = cur.waypoints.slice(idx).filter((w) => !skippedWaypoints.has(w.id));
@@ -346,7 +346,7 @@ function stopInternal() {
 }
 
 /** Stop the ride. Returns the saved ride (or null if discarded / too short). */
-export async function stopRide(save: boolean, name?: string): Promise<SavedRoute | null> {
+export async function stopRide(save: boolean, name?: string, groupId?: string): Promise<SavedRoute | null> {
   const rec = recorder;
   const route = engine?.route ?? null;
   stopInternal();
@@ -374,8 +374,8 @@ export async function stopRide(save: boolean, name?: string): Promise<SavedRoute
     createdAt: rec.startedAt,
     updatedAt: Date.now(),
     route: r,
-    favorite: false,
-    collectionIds: [],
+    favorite: true,
+    collectionIds: groupId ? [groupId] : [],
     ride: { stats, points: pts, startedAt: rec.startedAt },
   };
   await saveRoute(saved);

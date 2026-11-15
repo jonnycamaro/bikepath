@@ -1,5 +1,6 @@
 import maplibregl from 'maplibre-gl';
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { searchPlaces, type Place } from './lib/geocode';
 import { formatDistance, haversine, type LngLat } from './lib/geo';
 import { location } from './lib/location';
@@ -14,14 +15,17 @@ import RoutesScreen from './components/RoutesScreen';
 import ProfileScreen from './components/ProfileScreen';
 import SearchBox from './components/SearchBox';
 import ExternalLinks from './components/ExternalLinks';
+import { SavePlaceSheet, savedPlaceFor } from './components/Favorites';
 import PlaceDetails from './components/PlaceDetails';
+import TapMenu from './components/TapMenu';
+import { PLACE_LOADING } from './lib/tapActions';
 import LegalSheet from './components/LegalSheet';
 import ProfileEditor from './components/ProfileEditor';
 import { BikeSheet } from './components/BikeSheet';
 import { RoundTripSheet } from './components/RoundTripSheet';
 import { LayersSheet, OfflineSheet, ProfileSheet, SaveSheet } from './components/Sheets';
 import StartNavDialog, { MissedStopDialog } from './components/StartNavDialog';
-import { Icon3D, IconBike, IconClose, IconDown, IconSearch, IconUp, IconCompass, IconHeading, IconLayers, IconLocate, IconMap, IconNavigate, IconPlan, IconProfile, IconRecord, IconRoutes } from './components/icons';
+import { Icon3D, IconBike, IconClose, IconDown, IconStar, IconTrash, IconSearch, IconUp, IconCompass, IconHeading, IconLayers, IconLocate, IconMap, IconNavigate, IconPlan, IconProfile, IconRecord } from './components/icons';
 
 function TabBar() {
   const tab = useStore((s) => s.tab);
@@ -31,7 +35,7 @@ function TabBar() {
     { id: 'map', label: 'Karte', icon: <IconMap /> },
     { id: 'plan', label: 'Planen', icon: <IconPlan /> },
     { id: 'record', label: live ? 'Live' : 'Navigieren', icon: live ? <IconRecord /> : <IconNavigate /> },
-    { id: 'routes', label: 'Meine Routen', icon: <IconRoutes /> },
+    { id: 'routes', label: 'Favoriten', icon: <IconStar /> },
     { id: 'profile', label: 'Profil', icon: <IconProfile /> },
   ];
   return (
@@ -93,6 +97,13 @@ function MapControls({ bottom }: { bottom: string }) {
 
 function PlaceCard({ place, onClose }: { place: Place; onClose: () => void }) {
   const s = useStore();
+  const [saving, setSaving] = useState(false);
+  const fav = savedPlaceFor(s.places, place);
+  const toggleFav = () => {
+    if (!fav) return setSaving(true);
+    s.setPlaces(s.places.filter((x) => x.id !== fav.id));
+    s.toastMsg(`„${fav.name}“ aus den Favoriten entfernt`);
+  };
   const marker = useRef<maplibregl.Marker | null>(null);
   useEffect(() => {
     if (!mapRef.current) return;
@@ -101,13 +112,16 @@ function PlaceCard({ place, onClose }: { place: Place; onClose: () => void }) {
       marker.current?.remove();
     };
   }, [place]);
-  const routeHere = () => {
-    const me = s.fix?.lngLat;
-    s.setWaypoints(me ? [{ id: 'me' + Date.now(), lngLat: me, name: 'Mein Standort' }, { id: 'p' + Date.now(), lngLat: place.lngLat, name: place.name }] : [{ id: 'p' + Date.now(), lngLat: place.lngLat, name: place.name }]);
-    s.setTab('plan');
-    onClose();
+  const loading = place.name === PLACE_LOADING;
+  const n = s.waypoints.length;
+  /** put the place into the plan; from the map or navigation tab, continue in the planner */
+  const as = (role: 'start' | 'end' | 'via') => {
+    s.placeAs(role, place);
+    if (s.tab !== 'plan') s.setTab('plan');
+    else onClose();
   };
   return (
+<>
     <div className="sheet place-sheet" data-testid="place-card">
       <div className="grab" />
       <div className="body">
@@ -116,32 +130,49 @@ function PlaceCard({ place, onClose }: { place: Place; onClose: () => void }) {
             <h2 style={{ margin: 0 }}>{place.name}</h2>
             <div className="muted small">{place.detail}{s.fix ? ` · ${formatDistance(haversine(s.fix.lngLat, place.lngLat))} entfernt` : ''}</div>
           </div>
+          {place.kind !== 'waypoint' && (
+            <button className="icon-btn" onClick={toggleFav} disabled={loading} aria-label={fav ? 'Aus den Favoriten entfernen' : 'Als Favorit speichern'} data-testid="place-fav" style={fav ? { color: 'var(--orange)' } : undefined}>
+              <IconStar size={20} filled={!!fav} />
+            </button>
+          )}
           <button className="icon-btn" onClick={onClose} aria-label="Schließen"><IconClose size={20} /></button>
         </div>
         <div className="spacer" />
-        <div className="row">
-          <button className="btn primary grow" onClick={routeHere} data-testid="route-here"><IconNavigate size={18} /> Route hierher</button>
-          <button className="btn grow" onClick={() => { s.setWaypoints([{ id: 'p' + Date.now(), lngLat: place.lngLat, name: place.name }]); s.setTab('plan'); onClose(); }}>Als Start</button>
+        <div className="row place-actions">
+          {place.kind === 'waypoint' && s.selectedWaypoint ? (
+            <button className="btn grow danger" onClick={() => { s.removeWaypoint(s.selectedWaypoint!); onClose(); }} data-testid="place-remove">
+              <IconTrash size={16} /> Aus der Route entfernen
+            </button>
+          ) : s.loop ? (
+            <button className="btn primary grow" disabled={loading} onClick={() => as('via')} data-testid="place-as-via">Als Zwischenstopp</button>
+          ) : (
+            <>
+              <button className="btn grow" disabled={loading} onClick={() => as('start')} data-testid="place-as-start">Als Start</button>
+              <button className="btn primary grow" disabled={loading} onClick={() => as('end')} data-testid="place-as-end"><IconNavigate size={16} /> Als Ziel</button>
+              {n >= 2 && <button className="btn grow" disabled={loading} onClick={() => as('via')} data-testid="place-as-via">Zwischenziel</button>}
+            </>
+          )}
         </div>
         <PlaceDetails place={place} />
         <div className="spacer" />
         <ExternalLinks place={place} />
       </div>
     </div>
+      {saving && createPortal(<SavePlaceSheet place={place} onClose={() => setSaving(false)} />, document.querySelector('.app') ?? document.body)}
+    </>
   );
 }
 
 /**
  * Place search on the map: a round button top right (as in other map apps) that opens the
- * search field. Map: the result opens the place card. Planner: a small card offers to add it
- * to the route. Navigieren: switches to the map with the place card ("Route hierher").
+ * search field. A result opens the place card at the bottom (start / destination / stop);
+ * Enter shows all results on the map.
  */
 function MapSearch() {
   const [open, setOpen] = useState(false);
   const pick = (p: Place) => {
     const s = useStore.getState();
     setOpen(false);
-    if (s.tab === 'record') s.setTab('map');
     s.showPlace(p);
     s.focusMap({ center: p.lngLat, zoom: 15 });
   };
@@ -154,7 +185,6 @@ function MapSearch() {
       const dist = (p: Place) => (near ? haversine(near, p.lngLat) : 0);
       const places = [...found].sort((a, b) => dist(a) - dist(b));
       if (!places.length) return s.toastMsg(`Keine Treffer für „${query}“`);
-      if (s.tab === 'record') s.setTab('map');
       useStore.setState({ searchResults: { query, places, centre: near }, placeCard: null });
       // frame the nearest results (and the reference point), not one far away
       const view = places.slice(0, 10).map((p) => p.lngLat).concat(near ? [near] : []);
@@ -174,7 +204,7 @@ function MapSearch() {
   return (
     <div className="topbar map-search-open" data-testid="map-search">
       <div className="grow">
-        <SearchBox autoFocus onSelect={pick} onSubmit={showAll} />
+        <SearchBox autoFocus onSelect={pick} onSubmit={showAll} poiTitle="Ort wählen" />
       </div>
       <button className="fab small" onClick={() => setOpen(false)} aria-label="Suche schließen"><IconClose size={20} /></button>
     </div>
@@ -219,39 +249,6 @@ function SearchResultsBar() {
   );
 }
 
-/** Search result while planning: marker on the map and a card to add it to the route. */
-function PlanPlaceCard({ place, onClose }: { place: Place; onClose: () => void }) {
-  const s = useStore();
-  useEffect(() => {
-    if (!mapRef.current) return;
-    const m = new maplibregl.Marker({ color: '#e5383b' }).setLngLat(place.lngLat).addTo(mapRef.current);
-    return () => {
-      m.remove();
-    };
-  }, [place]);
-  const [more, setMore] = useState(false);
-  const role = s.loop ? 'Als Zwischenstopp' : s.waypoints.length === 0 ? 'Als Start' : s.waypoints.length === 1 ? 'Als Ziel' : 'Als weiteren Punkt';
-  return (
-    <div className="plan-place-wrap" data-testid="plan-place">
-      <div className="plan-place">
-        <button className="grow plan-place-title" onClick={() => setMore(!more)} aria-expanded={more} data-testid="plan-place-more">
-          <div className="poi-card-name">{place.name}</div>
-          <div className="muted small ellipsis">{more ? 'Weniger anzeigen' : place.detail ? `${place.detail} · Details` : 'Details'}</div>
-        </button>
-        <button className="btn primary sm" onClick={() => { s.addWaypoint(place.lngLat, place.name); onClose(); }} data-testid="plan-place-add">{role}</button>
-        <button className="icon-btn" onClick={onClose} aria-label="Schließen"><IconClose size={18} /></button>
-      </div>
-      {more && (
-        <div className="plan-place-details">
-          <PlaceDetails place={place} />
-          <div className="spacer" />
-          <ExternalLinks place={place} />
-        </div>
-      )}
-    </div>
-  );
-}
-
 function Onboarding() {
   const setSettings = useStore((s) => s.setSettings);
   return (
@@ -289,6 +286,7 @@ export default function App() {
   const batterySave = useStore((s) => s.settings.batterySave);
   const profileEditor = useStore((s) => s.profileEditor);
   const searchResults = useStore((s) => s.searchResults);
+  const tapMenu = useStore((s) => s.tapMenu);
   const place = useStore((s) => s.placeCard);
   const setPlace = useStore((s) => s.showPlace);
   const [toastVisible, setToastVisible] = useState(false);
@@ -350,16 +348,18 @@ export default function App() {
       <MapView />
 
       {(tab === 'map' || tab === 'plan' || (tab === 'record' && !session)) && sheet !== 'offline' && <MapSearch key={tab} />}
-      {(searchResults || (tab === 'plan' && place)) && (
+      {searchResults && (
         <div className="top-stack">
-          {searchResults && <SearchResultsBar />}
-          {tab === 'plan' && place && <PlanPlaceCard place={place} onClose={() => setPlace(null)} />}
+          <SearchResultsBar />
         </div>
       )}
-      {tab === 'map' && place && <SheetHeight><PlaceCard place={place} onClose={() => setPlace(null)} /></SheetHeight>}
       {tab === 'map' && sheet === 'offline' && <SheetHeight><OfflineSheet /></SheetHeight>}
       {tab === 'plan' && <PlannerSheet />}
       {tab === 'record' && (session ? <NavigationScreen /> : <SheetHeight><RecordTab /></SheetHeight>)}
+      {tapMenu && (tab === 'map' || tab === 'plan' || (tab === 'record' && !session)) && <TapMenu place={tapMenu} />}
+      {place && (tab === 'map' || tab === 'plan' || (tab === 'record' && !session)) && (
+        <SheetHeight key={place.id}><PlaceCard place={place} onClose={() => setPlace(null)} /></SheetHeight>
+      )}
       {tab === 'routes' && (detailId ? <SheetHeight key={detailId}><RoutesScreen /></SheetHeight> : <RoutesScreen />)}
       {tab === 'profile' && <ProfileScreen />}
       {showMapControls && <MapControls bottom={controlsBottom} />}

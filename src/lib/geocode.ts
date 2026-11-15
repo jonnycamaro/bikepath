@@ -95,3 +95,31 @@ export function nearestFirst(places: Place[], near?: LngLat): Place[] {
   for (const p of places) groups.set(key(p), [...(groups.get(key(p)) ?? []), p]);
   return [...groups.values()].flatMap((g) => g.sort((a, b) => dist(a) - dist(b)));
 }
+
+/**
+ * What is at a tapped point: the named place there (shop, sight …) if it is within a few metres,
+ * otherwise the address with house number, otherwise the nearest street. The returned place
+ * keeps the tapped coordinates, so a route goes exactly where the rider tapped.
+ */
+export async function reversePlace(p: LngLat, signal?: AbortSignal): Promise<Place> {
+  const fallback: Place = { id: `tap-${p[0]},${p[1]}`, name: 'Punkt auf der Karte', detail: `${p[1].toFixed(5)}, ${p[0].toFixed(5)}`, lngLat: p, kind: 'coord' };
+  const res = await fetch(`${PHOTON}/reverse?lon=${p[0]}&lat=${p[1]}&lang=de&limit=3`, { signal });
+  if (!res.ok) return fallback;
+  const features: any[] = (await res.json())?.features ?? [];
+  const dist = (f: any) => {
+    const [lon, lat] = f.geometry.coordinates;
+    return Math.hypot((lon - p[0]) * 111320 * Math.cos((p[1] * Math.PI) / 180), (lat - p[1]) * 110540);
+  };
+  const town = (pr: any) => [pr.postcode, pr.city ?? pr.town ?? pr.village].filter(Boolean).join(' ');
+  const named = features.find((f) => f.properties?.name && f.properties?.type === 'house' && dist(f) <= 40);
+  if (named) return { ...parsePhoton({ features: [named] })[0], lngLat: p };
+  const house = features.find((f) => f.properties?.housenumber && dist(f) <= 60);
+  if (house) {
+    const pr = house.properties;
+    return { ...fallback, id: `tap-${pr.osm_type}${pr.osm_id}`, name: `${pr.street} ${pr.housenumber}`, detail: town(pr), kind: 'address' };
+  }
+  const street = features.find((f) => f.properties?.type === 'street' && f.properties?.name && dist(f) <= 200);
+  if (street) return { ...fallback, name: `Bei ${street.properties.name}`, detail: town(street.properties), kind: 'address' };
+  const any = features[0]?.properties;
+  return any ? { ...fallback, detail: [town(any), fallback.detail].filter(Boolean).join(' · ') } : fallback;
+}

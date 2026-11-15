@@ -1,4 +1,4 @@
-import { cumulative, elevationGain, haversine, type Coord, type LngLat } from './geo';
+import { cumulative, elevationGain, type Coord, type LngLat } from './geo';
 import { buildInstructions, type Instruction } from './instructions';
 
 /** Routing profiles, mapped to BRouter profiles. */
@@ -6,7 +6,8 @@ export interface RoutingProfile {
   id: string;
   label: string;
   description: string;
-  brouter: string | null; // null = freehand (straight lines)
+  /** BRouter profile name ('custom' for own options, whose script is uploaded) */
+  brouter: string;
   /** BRouter profile variable overrides (sent as profile:<name>=<value>) */
   params?: Record<string, string | number>;
   speedKmh: number; // default estimated speed
@@ -37,7 +38,6 @@ export const PROFILES: RoutingProfile[] = [
   { id: 'mtb', label: 'Mountainbike', description: 'Trails und unbefestigte Wege', brouter: 'mtb', speedKmh: 14, icon: 'mtb' },
   { id: 'ebike', label: 'E-Bike', description: 'Mehr Steigung ok, keine Treppen', brouter: 'trekking', speedKmh: 23, icon: 'ebike' },
   { id: 'shortest', label: 'Kürzeste', description: 'Kürzester Weg', brouter: 'shortest', speedKmh: 17, icon: 'short' },
-  { id: 'freehand', label: 'Freihand', description: 'Gerade Linien ohne Routing', brouter: null, speedKmh: 18, icon: 'pen' },
 ];
 
 /** Own routing options, set by the store from the settings (see customProfile.ts). */
@@ -74,6 +74,8 @@ export interface Waypoint {
   id: string;
   lngLat: LngLat;
   name?: string;
+  /** OpenStreetMap object, if the point came from a place (for its details) */
+  osm?: string;
 }
 
 export interface SegmentStat {
@@ -212,16 +214,6 @@ export function parseBrouter(json: any): Leg {
   return { coords, surface, wayType, hints: f.properties?.voicehints ?? [] };
 }
 
-function freehandLeg(a: LngLat, b: LngLat): Leg {
-  const n = Math.max(2, Math.ceil(haversine(a, b) / 200) + 1);
-  const coords: Coord[] = [];
-  for (let i = 0; i < n; i++) {
-    const t = i / (n - 1);
-    coords.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, undefined]);
-  }
-  return { coords, surface: coords.map(() => 'unknown'), wayType: coords.map(() => 'other'), hints: [] };
-}
-
 const legCache = new Map<string, Leg>();
 
 /** short, stable fingerprint of a profile script for cache keys */
@@ -254,7 +246,6 @@ export interface TrackOptions {
  * "retry later" when it is busy, so that case is retried with a growing pause.
  */
 export async function fetchTrack(points: LngLat[], profile: RoutingProfile, opts: TrackOptions = {}): Promise<Leg> {
-  if (!profile.brouter) throw new Error('Freihand kann nicht geroutet werden');
   const pq = profileQuery({ ...(profile.params ?? {}), ...(opts.params ?? {}) });
   const lonlats = points.map((p) => `${p[0].toFixed(6)},${p[1].toFixed(6)}`).join('|');
   const key = `${profile.script ? `${profile.id}:${hash(profile.script)}` : profile.brouter}${pq}|${lonlats}|${opts.nogos ?? ''}`;
@@ -293,11 +284,10 @@ export async function fetchTrack(points: LngLat[], profile: RoutingProfile, opts
 }
 
 async function fetchLeg(a: LngLat, b: LngLat, profile: RoutingProfile, signal?: AbortSignal, extra: Record<string, string | number> = {}): Promise<Leg> {
-  if (!profile.brouter) return freehandLeg(a, b);
   return fetchTrack([a, b], profile, { signal, params: extra });
 }
 
-/** Fill missing elevations (freehand legs) by linear interpolation from neighbours. */
+/** Fill missing elevations (points the router returned without height) by linear interpolation from neighbours. */
 function fillElevation(coords: Coord[]) {
   let last = -1;
   for (let i = 0; i < coords.length; i++) {
@@ -366,16 +356,13 @@ export function assembleRoute(legs: Leg[], profile: RoutingProfile, waypoints: W
 export async function computeRoute(
   waypoints: Waypoint[],
   profileId: string,
-  opts: { signal?: AbortSignal; speedKmh?: number; freehandLegs?: Set<number>; params?: Record<string, string | number> } = {},
+  opts: { signal?: AbortSignal; speedKmh?: number; params?: Record<string, string | number> } = {},
 ): Promise<Route | null> {
   if (waypoints.length < 2) return null;
   const profile = profileById(profileId);
   const legs = await Promise.all(
     waypoints.slice(1).map((wp, i) => {
-      const a = waypoints[i].lngLat;
-      const b = wp.lngLat;
-      if (opts.freehandLegs?.has(i)) return Promise.resolve(freehandLeg(a, b));
-      return fetchLeg(a, b, profile, opts.signal, opts.params);
+      return fetchLeg(waypoints[i].lngLat, wp.lngLat, profile, opts.signal, opts.params);
     }),
   );
   return assembleRoute(legs, profile, waypoints, opts.speedKmh ?? profile.speedKmh);

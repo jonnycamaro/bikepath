@@ -81,7 +81,8 @@ Screenshots danach mit dem Read-Werkzeug ansehen.
 | Ablauf | Kennungen |
 |---|---|
 | Strecke planen | `tab-plan` → `plan-mode-trip` (Start = simulierter Standort) |
-| Ortssuche auf der Karte | `map-search-btn` → Feld in `map-search`; im Planer danach `plan-place` / `plan-place-add` |
+| Ortssuche auf der Karte | `map-search-btn` → Feld in `map-search` → Ortskarte `place-card` |
+| Tippen auf die Karte (Karte, Planen, Navigieren) | Halbkreis-Menü `.tap-menu` mit Segmenten `.tap-seg[data-action=start|via|end|info]`, ausgegraute haben die Klasse `off`. Klicken auf `… path` des Segments. `info` öffnet die Ortskarte `place-card`. Ein Tipp unter dem unteren Fenster trifft das Fenster, nicht die Karte – vorher mit `easeTo({ …, offset: [0, -200], duration: 0 })` nach oben schieben (`jumpTo` kennt kein `offset`). |
 | Eigene Routenoption | `tab-profile` → `custom-new` → `profile-editor` (`editor-name`, `editor-ways-<art>`, `editor-save-use`) |
 | Rundtour | `plan-mode-loop` → `roundtrip-sheet` |
 | POI-Karte | `poi-open` → `poi-picker`, Status in `poi-status` |

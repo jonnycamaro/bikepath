@@ -3,6 +3,7 @@ import { useMemo, useRef, useState } from 'react';
 import { formatDistance } from '../lib/geo';
 import { gradeColor, grades } from '../lib/routeStyle';
 import type { Route } from '../lib/routing';
+import { useStore } from '../store';
 import { mapRef } from './MapView';
 
 let hoverMarker: maplibregl.Marker | null = null;
@@ -82,12 +83,14 @@ export default function ElevationChart({ route, height = 120, position, window: 
     const d = data.from + ((fx - padL) / (W - padL - 4)) * (data.to - data.from);
     const clamped = Math.max(data.from, Math.min(data.to, d));
     setHover(clamped);
+    useStore.setState({ chartHover: clamped });
     let i = route.cum.findIndex((c) => c >= clamped);
     if (i < 0) i = route.coords.length - 1;
     showHover([route.coords[i][0], route.coords[i][1]]);
   };
   const end = () => {
     setHover(null);
+    useStore.setState({ chartHover: null });
     showHover(null);
   };
 

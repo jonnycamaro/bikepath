@@ -2,15 +2,15 @@ import maplibregl from 'maplibre-gl';
 import { useEffect, useRef, useState } from 'react';
 import { reverseGeocode } from '../lib/geocode';
 import { bikeById, rideSpeed } from '../lib/bike';
-import { destination, formatDuration, haversine, type LngLat } from '../lib/geo';
+import { formatDuration, haversine, type LngLat } from '../lib/geo';
 import { styleById, styleFor } from '../lib/mapStyles';
 import { compassName, loopBounds, loopReach, type LoopStop } from '../lib/roundtrip';
 import { useStore } from '../store';
 import { mapRef } from './MapView';
 import SearchBox from './SearchBox';
 import { Amount } from './BikeSheet';
-import { Modal, ProfileSelector, ProfileSheet } from './Sheets';
-import { IconCheck, IconClock, IconClose, IconDown, IconLocate, IconMapPin, IconRuler } from './icons';
+import { Modal } from './Sheets';
+import { IconCheck, IconClock, IconClose, IconDown, IconLocate, IconRuler } from './icons';
 
 /** Small compass face with a needle pointing in `dir`. */
 export function DirBadge({ dir, size = 38 }: { dir: number; size?: number }) {
@@ -126,8 +126,9 @@ export function RoundTripSheet() {
     const c = mapRef.current?.getCenter();
     return c ? { lngLat: [c.lng, c.lat] } : null;
   });
-  const [stops, setStops] = useState<LoopStop[]>(() => (loop ? s.waypoints.slice(1).map((w) => ({ id: w.id, lngLat: w.lngLat, name: w.name })) : []));
-  const [stacked, setStacked] = useState<null | 'where' | 'stop' | 'goal' | 'profile'>(null);
+  // stops are added on the map (half-ring menu); updating the tour keeps the ones it has
+  const [stops] = useState<LoopStop[]>(() => (loop ? s.waypoints.slice(1).map((w) => ({ id: w.id, lngLat: w.lngLat, name: w.name })) : []));
+  const [stacked, setStacked] = useState<null | 'where' | 'goal'>(null);
   const close = () => s.setSheet(null);
   const distance = kmOf(goal, speed) * 1000;
 
@@ -174,23 +175,6 @@ export function RoundTripSheet() {
     );
   }
 
-  if (stacked === 'stop' && start) {
-    return (
-      <StopPicker
-        start={start}
-        stops={stops}
-        // open where a stop is likely wanted: a little way out in the chosen direction
-        center={destination(start.lngLat, loopReach(distance) * 0.5, dir)}
-        distance={distance}
-        onClose={() => setStacked(null)}
-        onApply={(p) => {
-          setStops([...stops, p]);
-          setStacked(null);
-        }}
-      />
-    );
-  }
-
   return (
     <>
       <Modal title="Rundtour planen" onClose={close} testid="roundtrip-sheet">
@@ -216,43 +200,11 @@ export function RoundTripSheet() {
           <IconDown size={18} className="chev" />
         </button>
 
-        <h3>Zwischenstopps <span className="optional">optional</span></h3>
-        {stops.length > 0 && (
-          <div className="wps" data-testid="roundtrip-stops" style={{ marginBottom: 8 }}>
-            {stops.map((p, i) => (
-              <div className="wp" key={p.id ?? i}>
-                <div className="dot" style={{ background: 'var(--primary)' }}>{i + 1}</div>
-                <div className="name">{p.name ?? `${p.lngLat[1].toFixed(5)}, ${p.lngLat[0].toFixed(5)}`}</div>
-                <button className="icon-btn" style={{ width: 32, height: 32 }} onClick={() => setStops(stops.filter((x) => x !== p))} aria-label="Zwischenstopp entfernen"><IconClose size={16} /></button>
-              </div>
-            ))}
-          </div>
-        )}
-        <div className="row" style={{ alignItems: 'flex-start' }}>
-          <div className="grow">
-            <SearchBox placeholder={stops.length ? 'Weiteren Zwischenstopp suchen' : 'Zwischenstopp suchen'} poiTitle="Zwischenstopp wählen" onSelect={(p) => setStops([...stops, { lngLat: p.lngLat, name: p.name }])} />
-          </div>
-          <button className="icon-btn pick-on-map" disabled={!start} onClick={() => setStacked('stop')} aria-label="Zwischenstopp auf der Karte wählen" title="Auf der Karte wählen" data-testid="roundtrip-stop-map">
-            <IconMapPin size={22} />
-          </button>
-        </div>
-        <div className="muted small" style={{ marginTop: 6 }}>Ort suchen oder mit dem Pin auf der Karte wählen. Die Rundtour führt an den Stopps vorbei.</div>
-
-        <h3>Routenoption</h3>
-        <ProfileSelector onOpen={() => setStacked('profile')} />
-
         <div className="spacer" />
         <button className="btn primary block" disabled={!start} onClick={() => create(loop?.variant ?? 0)} data-testid="roundtrip-go">
           {loop ? 'Rundtour aktualisieren' : 'Rundtour erstellen'}
         </button>
-        {loop && (
-          <>
-            <div className="spacer" />
-            <button className="btn block" disabled={!start} onClick={() => create(loop.variant + 1)}>Andere Variante</button>
-          </>
-        )}
       </Modal>
-      {stacked === 'profile' && <ProfileSheet onClose={() => setStacked(null)} />}
       {stacked === 'goal' && (
         <GoalSheet
           goal={goal}
@@ -266,115 +218,6 @@ export function RoundTripSheet() {
         />
       )}
     </>
-  );
-}
-
-/**
- * Full-screen map to choose a stop: move the map until the pin sits on the place (or tap
- * it, or search), then confirm. Start and the stops chosen so far are shown for orientation.
- */
-function StopPicker({ start, stops, center, distance, onApply, onClose }: {
-  start: StartPoint;
-  stops: LoopStop[];
-  center: LngLat;
-  distance: number;
-  onApply: (stop: LoopStop) => void;
-  onClose: () => void;
-}) {
-  const settings = useStore((s) => s.settings);
-  const [at, setAt] = useState<LngLat>(center);
-  const [name, setName] = useState<string | undefined>();
-  const [moving, setMoving] = useState(false);
-  const box = useRef<HTMLDivElement>(null);
-  const map = useRef<maplibregl.Map | null>(null);
-  /** set by a search result, so the following map move keeps its name */
-  const picked = useRef<string | undefined>();
-
-  useEffect(() => {
-    const m = new maplibregl.Map({
-      container: box.current!,
-      style: styleFor(styleById(settings.mapStyle)),
-      center,
-      // the whole tour area is in view: about its reach from edge to edge
-      zoom: Math.min(14, Math.max(8, Math.log2((78271.517 * Math.cos((center[1] * Math.PI) / 180) * 340) / (loopReach(distance) * 0.9)))),
-      attributionControl: { compact: true },
-      dragRotate: false,
-      pitchWithRotate: false,
-    });
-    m.touchZoomRotate.disableRotation();
-    map.current = m;
-    const mark = (kind: string, label: string, p: LngLat) => {
-      const el = document.createElement('div');
-      el.className = `wp-marker ${kind}`;
-      el.textContent = label;
-      el.style.cursor = 'default';
-      new maplibregl.Marker({ element: el }).setLngLat(p).addTo(m);
-    };
-    mark('start', 'A', start.lngLat);
-    stops.forEach((p, i) => mark('via', String(i + 1), p.lngLat));
-    m.on('movestart', () => setMoving(true));
-    m.on('moveend', () => {
-      const c = m.getCenter();
-      setMoving(false);
-      setName(picked.current);
-      picked.current = undefined;
-      setAt([c.lng, c.lat]);
-    });
-    m.on('click', (e) => m.easeTo({ center: e.lngLat, duration: 300 }));
-    return () => {
-      map.current = null;
-      m.remove();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // name the place under the pin
-  useEffect(() => {
-    if (name) return;
-    const ctrl = new AbortController();
-    const t = setTimeout(() => reverseGeocode(at, ctrl.signal).then((n) => n && setName(n)).catch(() => {}), 350);
-    return () => {
-      clearTimeout(t);
-      ctrl.abort();
-    };
-  }, [at, name]);
-
-  const km = haversine(start.lngLat, at) / 1000;
-  return (
-    <div className="rt-picker" data-testid="stop-picker">
-      <div className="rt-map">
-        <div ref={box} className="rt-canvas" />
-        <div className="rt-top">
-          <button className="fab small" onClick={onClose} aria-label="Zurück"><IconClose size={20} /></button>
-          <div className="grow">
-            <SearchBox
-              placeholder="Ort suchen"
-              onSelect={(p) => {
-                picked.current = p.name;
-                map.current?.easeTo({ center: p.lngLat, zoom: Math.max(map.current.getZoom(), 13), duration: 400 });
-              }}
-            />
-          </div>
-        </div>
-        <svg className={`stop-pin ${moving ? 'moving' : ''}`} viewBox="-20 -46 40 52" aria-hidden>
-          <ellipse cx="0" cy="0" rx="6" ry="2.4" className="shade" />
-          <g className="body">
-            <path d="M0 0C-3 -9 -14 -16 -14 -28a14 14 0 0 1 28 0C14 -16 3 -9 0 0Z" className="drop" />
-            <circle cy="-28" r="5.2" className="eye" />
-          </g>
-        </svg>
-      </div>
-      <div className="rt-panel">
-        <div className="rt-dir stop-name" data-testid="stop-picker-name">{name?.split(',')[0] ?? (moving ? '…' : `${at[1].toFixed(5)}, ${at[0].toFixed(5)}`)}</div>
-        <div className="muted small">
-          {km < 10 ? km.toFixed(1).replace('.', ',') : Math.round(km)} km Luftlinie vom Start · Karte verschieben oder antippen, bis der Pin auf dem Ort sitzt.
-        </div>
-        <div className="spacer" />
-        <button className="btn primary block" onClick={() => onApply({ lngLat: map.current ? [map.current.getCenter().lng, map.current.getCenter().lat] : at, name })} data-testid="stop-picker-apply">
-          <IconCheck size={18} /> Als Zwischenstopp übernehmen
-        </button>
-      </div>
-    </div>
   );
 }
 

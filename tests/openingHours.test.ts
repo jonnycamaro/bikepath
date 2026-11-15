@@ -91,3 +91,25 @@ describe('place details', () => {
     expect(commonsFileFromUrl('https://upload.wikimedia.org/wikipedia/de/1/12/Local.jpg')).toBeUndefined(); // only on de.wikipedia: licence unclear
   });
 });
+
+describe('offline maps along a route', () => {
+  it('stores a corridor around the track, not the whole rectangle', async () => {
+    const { routeTiles, tilesInBbox } = await import('../src/lib/offline');
+    // a diagonal ride Leer -> Papenburg (~25 km)
+    const coords: [number, number][] = Array.from({ length: 200 }, (_, i) => [7.45 + (i / 199) * 0.0, 53.23 - (i / 199) * 0.15] as [number, number]).map(([x, y], i) => [x + (i / 199) * 0.25, y]);
+    const tiles = routeTiles(coords);
+    const z14 = tiles.filter((t) => t[0] === 14);
+    const rect = tilesInBbox([7.45, 53.08, 7.70, 53.23], 14, 14);
+    expect(z14.length).toBeGreaterThan(20);
+    expect(z14.length).toBeLessThan(rect.length); // corridor, not the whole box
+    // every point of the track lies in a stored zoom-14 tile
+    const keys = new Set(z14.map((t) => t.join('/')));
+    const n = 2 ** 14;
+    for (const [lon, lat] of coords) {
+      const x = Math.floor(((lon + 180) / 360) * n);
+      const y = Math.floor(((1 - Math.log(Math.tan((lat * Math.PI) / 180) + 1 / Math.cos((lat * Math.PI) / 180)) / Math.PI) / 2) * n);
+      expect(keys.has(`14/${x}/${y}`)).toBe(true);
+    }
+    expect(tiles.some((t) => t[0] === 6)).toBe(true); // overview zooms of the whole area
+  });
+});

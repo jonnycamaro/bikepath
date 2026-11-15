@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { PICKER_TYPES, POI_META } from '../lib/pois';
+import { GroupPicker } from './Favorites';
 import { formatDistance } from '../lib/geo';
 import { MAP_STYLES, OVERLAYS } from '../lib/mapStyles';
 import { AVG_TILE_BYTES, countTiles, deleteRegion, downloadRegion, listRegions, MAX_TILES, storageEstimate, type OfflineRegion } from '../lib/offline';
@@ -97,23 +98,28 @@ export function SaveSheet() {
   const [name, setName] = useState(
     s.planName || (s.loop ? `Rundtour ${Math.round((s.route?.distance ?? s.loop.distance) / 1000)} km` : s.waypoints.length >= 2 ? `${s.waypoints[0].name?.split(',')[0] ?? 'Start'} – ${s.waypoints[s.waypoints.length - 1].name?.split(',')[0] ?? 'Ziel'}` : 'Meine Route'),
   );
+  const existingRoute = s.saved.find((r) => r.id === s.editingId);
+  const [group, setGroup] = useState<string | undefined>(existingRoute?.collectionIds[0]);
   const close = () => s.setSheet(null);
   const save = async (asNew: boolean) => {
     if (!s.route) return;
-    const existing = s.saved.find((r) => r.id === s.editingId);
+    const existing = existingRoute;
     const r: SavedRoute =
       existing && !asNew
-        ? { ...existing, name, route: s.route, kind: existing.kind === 'recorded' ? 'planned' : existing.kind === 'imported' && s.undo.length ? 'planned' : existing.kind }
-        : { id: uid(), name, kind: 'planned', createdAt: Date.now(), updatedAt: Date.now(), route: s.route, favorite: false, collectionIds: [] };
+        ? { ...existing, name, route: s.route, collectionIds: group ? [group] : [], kind: existing.kind === 'recorded' ? 'planned' : existing.kind === 'imported' && s.undo.length ? 'planned' : existing.kind }
+        : { id: uid(), name, kind: 'planned', createdAt: Date.now(), updatedAt: Date.now(), route: s.route, favorite: true, collectionIds: group ? [group] : [] };
     await saveRoute(r);
     await s.refreshSaved();
     useStore.setState({ editingId: r.id, planName: name });
-    s.toastMsg('Route gespeichert');
+    s.toastMsg(`„${name}“ in den Favoriten gespeichert`);
     close();
   };
   return (
-    <Modal title="Route speichern" onClose={close} testid="save-sheet">
+    <Modal title="Route als Favorit speichern" onClose={close} testid="save-sheet">
+      <h3 style={{ marginTop: 4 }}>Name</h3>
       <input className="input" value={name} onChange={(e) => setName(e.target.value)} autoFocus aria-label="Routenname" />
+      <h3>Gruppe</h3>
+      <GroupPicker value={group} onChange={setGroup} />
       <div className="spacer" />
       <button className="btn primary block" onClick={() => save(false)} disabled={!name.trim()} data-testid="save-confirm">Speichern</button>
       {s.editingId && (
