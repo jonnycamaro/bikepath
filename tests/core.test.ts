@@ -9,7 +9,7 @@ import { assembleRoute, estimateDuration, parseBrouter, profileById, routeFromTr
 import { parseTrackFile, toGPX, toKML, simplifyByDistance } from '../src/lib/gpx';
 import { cleanTrack, computeRoundTrip, cutTurnHook, isLoopRoute, LoopProblem, loopSkeleton, overlapShare, reuseNogos } from '../src/lib/roundtrip';
 import { countTiles, lat2tile, lon2tile, tilesInBbox } from '../src/lib/offline';
-import { parseCoordinates, parsePhoton } from '../src/lib/geocode';
+import { nearestFirst, parseCoordinates, parsePhoton } from '../src/lib/geocode';
 import { colouredLines, grades } from '../src/lib/routeStyle';
 import { headwindShare } from '../src/lib/weather';
 import { classifyTilePoi } from '../src/lib/pois';
@@ -534,6 +534,12 @@ describe('misc', () => {
     // zoom-14 tiles of a small box in Hamburg: 2 × 2
     expect(tilesFor([9.99, 53.55, 10.01, 53.555])).toEqual([[8646, 5294], [8646, 5295], [8647, 5294], [8647, 5295]]);
     expect(decodePoiTile(new Uint8Array(0), 0, 0)).toEqual([]);
+  });
+  it('orders search results with the same name by distance from the reference point', () => {
+    const pl = (name: string, lon: number, lat: number) => ({ id: name + lon, name, detail: '', lngLat: [lon, lat] as [number, number], kind: '' });
+    const cochem: [number, number] = [7.1667, 50.1469];
+    const res = nearestFirst([pl('Barfußpfad', 7.06, 49.87), pl('Barfusspfad', 7.44, 50.06), pl('Cochem Burg', 7.16, 50.14)], cochem);
+    expect(res.map((p) => p.lngLat[0])).toEqual([7.44, 7.06, 7.16]);
   });
   it('builds links to Google Maps and Tripadvisor', () => {
     expect(googleMapsUrl('Asia Pho&Co', [7.4572, 53.2606], 'Leer')).toBe('https://www.google.com/maps/search/?api=1&query=Asia%20Pho%26Co%2C%20Leer');

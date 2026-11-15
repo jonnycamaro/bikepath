@@ -113,7 +113,25 @@ const PROFILE_GLYPHS: Record<string, React.ReactNode> = {
   city: <><circle cx="5.5" cy="17" r="3.5" /><circle cx="18.5" cy="17" r="3.5" /><path d="M5.5 17 9 9.5h5l4.5 7.5M9 9.5V7M7 7h4M14 9.5l-1-3.5h3" /></>,
   trekking: <><circle cx="5.5" cy="16.5" r="3.5" /><circle cx="18.5" cy="16.5" r="3.5" /><path d="M5.5 16.5 9 9h6l3.5 7.5M9 9 12 16.5h6.5M14 5h2.5l-1.5 4" /></>,
   cargo: <><circle cx="5" cy="17.5" r="3" /><circle cx="19.5" cy="17.5" r="3" /><path d="M5 17.5h9l2-9h2.5M16 8.5l3.5 9" /><path d="M3 9h9v5H4Z" /></>,
+  // extra symbols for own routing options
+  family: <><circle cx="8" cy="6" r="2.2" /><circle cx="16.5" cy="9" r="1.8" /><path d="M4.5 21v-6a3.5 3.5 0 0 1 7 0v6M13.5 21v-4.5a3 3 0 0 1 6 0V21" /></>,
+  forest: <><path d="m8 3-5 8h3l-3 5h10l-3-5h3Z" /><path d="M8 16v5" /><path d="m17 7-3.5 6h2l-2 4h7l-2-4h2Z" /><path d="M17 17v4" /></>,
+  coffee: <><path d="M4 9h12v5a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5Z" /><path d="M16 11h1.5a2.5 2.5 0 0 1 0 5H16" /><path d="M8 3v3M12 3v3" /></>,
+  sun: <><circle cx="12" cy="12" r="4" /><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8" /></>,
+  star: <><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9Z" /></>,
+  heart: <><path d="M12 20s-7.5-4.6-7.5-10.2A4.3 4.3 0 0 1 12 7a4.3 4.3 0 0 1 7.5 2.8C19.5 15.4 12 20 12 20Z" /></>,
+  camera: <><rect x="3" y="7" width="18" height="13" rx="2" /><circle cx="12" cy="13.5" r="3.5" /><path d="M8.5 7 10 4h4l1.5 3" /></>,
+  flag: <><path d="M5 21V4h11l-2 4 2 4H5" /></>,
+  water: <><path d="M3 9c2-2 4-2 6 0s4 2 6 0 4-2 6 0" /><path d="M3 15c2-2 4-2 6 0s4 2 6 0 4-2 6 0" /></>,
+  moon: <><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z" /></>,
+  timer: <><circle cx="12" cy="13" r="8" /><path d="M12 9v4l2.5 2.5M9.5 2h5" /></>,
+  leaf: <><path d="M5 19c0-8 5-14 15-15 0 10-6 15-14 15" /><path d="M5 19 13 11" /></>,
 };
+
+/** Symbols to choose from for an own routing option. */
+export const PROFILE_SYMBOLS = ['balanced', 'fast', 'shield', 'road', 'smooth', 'gravel', 'mtb', 'ebike', 'short', 'family', 'forest', 'leaf', 'water', 'sun', 'moon', 'coffee', 'camera', 'star', 'heart', 'flag', 'timer', 'city', 'trekking', 'cargo'];
+/** Colours to choose from for an own routing option. */
+export const PROFILE_SWATCHES = ['#0b6bd6', '#22a35a', '#e5383b', '#ff9500', '#7b3fe4', '#00a3a3', '#a0662b', '#d63384', '#4e7d2a', '#5b6b7f'];
 
 export const PROFILE_COLORS: Record<string, string> = {
   balanced: '#0b6bd6', fast: '#e5383b', shield: '#22a35a', road: '#7b3fe4', smooth: '#00a3a3',
@@ -121,8 +139,8 @@ export const PROFILE_COLORS: Record<string, string> = {
   city: '#00a3a3', trekking: '#0b6bd6', cargo: '#d63384',
 };
 
-export const ProfileBadge = ({ icon, size = 34 }: { icon: string; size?: number }) => (
-  <span className="profile-badge" style={{ width: size, height: size, ['--c' as string]: PROFILE_COLORS[icon] ?? 'var(--primary)' }}>
+export const ProfileBadge = ({ icon, size = 34, color }: { icon: string; size?: number; color?: string }) => (
+  <span className="profile-badge" style={{ width: size, height: size, ['--c' as string]: color ?? PROFILE_COLORS[icon] ?? 'var(--primary)' }}>
     <S size={Math.round(size * 0.56)}>{PROFILE_GLYPHS[icon] ?? PROFILE_GLYPHS.balanced}</S>
   </span>
 );

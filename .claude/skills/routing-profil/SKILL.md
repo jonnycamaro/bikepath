@@ -58,3 +58,21 @@ In `store.ts` sitzt dazu eine Rückfallkette: Schlägt „hoch" fehl, wird „mi
 versucht, dann „niedrig", mit einem Hinweis an den Nutzer. Strenge Vorgaben
 führen bei BRouter sonst zu 400, wenn keine Route existiert. Wer neue harte
 Einschränkungen einbaut, sollte sie in diese Kette einhängen.
+
+## Eigene Routenoptionen (vom Nutzer)
+
+Nicht in `PROFILES`, sondern `src/lib/customProfile.ts`: Daraus entsteht ein komplettes
+BRouter-Profil, das zur Laufzeit hochgeladen wird (`uploadProfile` in `routing.ts`).
+Wer dort einen Wert ergänzt (neue Wegart, neuer Untergrund):
+
+- Nur **Hauptwerte** aus `https://brouter.de/brouter/profiles2/lookups.dat` verwenden,
+  keine Aliase – sonst scheitert jede Route mit HTTP 500.
+- Vorher von Hand prüfen: Skript hochladen und die Antwort auf `"error"` ansehen.
+
+```bash
+curl -s -X POST --data-binary @profil.brf https://brouter.de/brouter/profile
+```
+
+- Danach `LIVE=1 npx vitest run --environment node tests/live/customProfile.live.test.ts`:
+  routet mit jeder Vorlage gegen den echten Server.
+- `normalizeProfile()` ergänzt neue Wegarten/Untergründe in gespeicherten Optionen.

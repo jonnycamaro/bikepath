@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { PICKER_TYPES, POI_META } from '../lib/pois';
 import { formatDistance } from '../lib/geo';
 import { MAP_STYLES, OVERLAYS } from '../lib/mapStyles';
 import { AVG_TILE_BYTES, countTiles, deleteRegion, downloadRegion, listRegions, MAX_TILES, storageEstimate, type OfflineRegion } from '../lib/offline';
-import { PROFILES, profileById } from '../lib/routing';
+import { customRoutingProfiles, PROFILES, profileById } from '../lib/routing';
 import { saveRoute, uid, type SavedRoute } from '../lib/storage';
 import { useStore } from '../store';
 import { mapRef } from './MapView';
@@ -237,7 +237,7 @@ export function ProfileSelector({ onOpen }: { onOpen?: () => void }) {
   const p = profileById(profileId);
   return (
     <button className="profile-select" onClick={onOpen ?? (() => useStore.getState().setSheet('profile'))} data-testid="profile-select">
-      <ProfileBadge icon={p.icon} size={30} />
+      <ProfileBadge icon={p.icon} color={p.color} size={30} />
       <span className="grow">
         <span className="title">{p.label}</span>
         <span className="meta">{p.description}</span>
@@ -255,12 +255,14 @@ export function ProfileSheet({ onClose }: { onClose?: () => void }) {
     <Modal title="Routenoption" onClose={close} testid="profile-sheet">
       <div className="profile-intro">Wähle, wie deine Route berechnet werden soll.</div>
       <div className="profile-list" role="radiogroup" aria-label="Routenoption">
-        {PROFILES.map((p) => {
+        {[...PROFILES, ...customRoutingProfiles()].map((p, i) => {
           const active = p.id === s.profileId;
           return (
-            <div key={p.id} className={`profile-opt ${active ? 'active' : ''}`}>
+            <Fragment key={p.id}>
+            {i === PROFILES.length && <div className="profile-group">Eigene</div>}
+            <div className={`profile-opt ${active ? 'active' : ''}`}>
               <button className="row-btn" role="radio" aria-checked={active} onClick={() => { s.setProfile(p.id); close(); }} data-testid={`profile-${p.id}`}>
-                <ProfileBadge icon={p.icon} />
+                <ProfileBadge icon={p.icon} color={p.color} />
                 <span className="grow">
                   <span className="title">{p.label}</span>
                   <span className="meta">{p.description}</span>
@@ -278,9 +280,13 @@ export function ProfileSheet({ onClose }: { onClose?: () => void }) {
                 </div>
               )}
             </div>
+            </Fragment>
           );
         })}
       </div>
+      <button className="btn ghost block" style={{ marginTop: 8 }} onClick={() => { close(); useStore.setState({ profileEditor: 'new' }); }} data-testid="profile-new">
+        + Eigene Routenoption anlegen
+      </button>
     </Modal>
   );
 }

@@ -22,7 +22,7 @@ type Status = { kind: 'loading' } | { kind: 'done'; count: number; zoom: number 
  * into a circle with their count – tapping it zooms in until they separate. The categories
  * on the right switch kinds on and off; tapping a place picks it and closes the map.
  */
-export default function PoiPicker({ title, onPick, onClose }: { title: string; onPick: (p: Place) => void; onClose: () => void }) {
+export default function PoiPicker({ title, onPick, onClose, center: around }: { title: string; onPick: (p: Place) => void; onClose: () => void; center?: LngLat }) {
   const settings = useStore((s) => s.settings);
   const setSettings = useStore((s) => s.setSettings);
   const types = settings.poiTypes;
@@ -81,7 +81,7 @@ export default function PoiPicker({ title, onPick, onClose }: { title: string; o
   useEffect(() => {
     const fix = useStore.getState().fix;
     const c = mapRef.current?.getCenter();
-    const center: LngLat = c ? [c.lng, c.lat] : fix ? fix.lngLat : [10.45, 51.16];
+    const center: LngLat = around ?? (c ? [c.lng, c.lat] : fix ? fix.lngLat : [10.45, 51.16]);
     const styleDef = styleById(styleById(settings.mapStyle).url ? settings.mapStyle : VECTOR_STYLE);
     const m = new maplibregl.Map({
       container: box.current!,

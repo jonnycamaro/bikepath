@@ -1,6 +1,7 @@
 import { createStore, del, entries, get, set } from 'idb-keyval';
 import type { RideStats, TrackPoint } from './recording';
 import type { Route } from './routing';
+import type { CustomProfile } from './customProfile';
 
 export type RouteKind = 'planned' | 'recorded' | 'imported';
 
@@ -59,6 +60,8 @@ export interface Settings {
   overlays: string[];
   /** POI categories shown when picking a place from the POI map, see lib/pois.ts */
   poiTypes: string[];
+  /** own routing options (Profil → Eigene Routenoptionen) */
+  customProfiles: CustomProfile[];
   terrain3d: boolean;
   defaultProfile: string;
   /** id of the rider's bike, see lib/bike.ts */
@@ -97,6 +100,7 @@ export const DEFAULT_SETTINGS: Settings = {
   batterySave: false,
   mapStyle: 'bikepath',
   overlays: [],
+  customProfiles: [],
   poiTypes: ['food', 'restaurant', 'shop', 'water', 'toilets', 'bikeshop', 'sight'],
   terrain3d: false,
   defaultProfile: 'balanced',

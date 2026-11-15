@@ -17,11 +17,14 @@ im Scratchpad installieren, **nicht** ins Repository:
 mkdir -p <scratchpad>/pwenv && cd <scratchpad>/pwenv && npm init -y >/dev/null && npm i playwright-core --silent
 ```
 
-Der Browser liegt schon im Cache; ihn über `executablePath` angeben:
+Als Browser über `executablePath` entweder den Playwright-Cache nehmen (kann nach einem
+Neustart fehlen) oder das installierte Chrome – das ist immer da:
 
 ```bash
-find ~/Library/Caches/ms-playwright -path '*chrome-mac-arm64*MacOS/*' -type f -perm +111 | head -1
+find ~/Library/Caches/ms-playwright -path '*chrome-mac-arm64*MacOS/*' -type f -perm +111 2>/dev/null | head -1 || echo "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 ```
+
+Mit dem installierten Chrome `headless: true` setzen, sonst öffnet sich ein Fenster.
 
 Der Entwicklungsserver muss laufen. Welcher Modus, zeigt:
 
@@ -78,6 +81,8 @@ Screenshots danach mit dem Read-Werkzeug ansehen.
 | Ablauf | Kennungen |
 |---|---|
 | Strecke planen | `tab-plan` → `plan-mode-trip` (Start = simulierter Standort) |
+| Ortssuche auf der Karte | `map-search-btn` → Feld in `map-search`; im Planer danach `plan-place` / `plan-place-add` |
+| Eigene Routenoption | `tab-profile` → `custom-new` → `profile-editor` (`editor-name`, `editor-ways-<art>`, `editor-save-use`) |
 | Rundtour | `plan-mode-loop` → `roundtrip-sheet` |
 | POI-Karte | `poi-open` → `poi-picker`, Status in `poi-status` |
 | Ort übernehmen | Ort antippen → `poi-card` → `poi-take`; Links `link-google`, `link-tripadvisor` |

@@ -5,7 +5,8 @@ import type { Fix, NavState } from './lib/navigation';
 import type { RecorderStatus, RideStats } from './lib/recording';
 import type { Route, Waypoint } from './lib/routing';
 import { rideSpeed } from './lib/bike';
-import { computeRoute, CYCLEPATH_PARAMS } from './lib/routing';
+import { computeRoute, CYCLEPATH_PARAMS, PROFILES, setCustomProfiles } from './lib/routing';
+import { normalizeProfile, toRoutingProfile } from './lib/customProfile';
 import { computeRoundTrip, isLoopRoute, LoopProblem, type LoopSpec, type LoopStop } from './lib/roundtrip';
 import {
   DEFAULT_SETTINGS,
@@ -83,6 +84,10 @@ interface State {
   offlineSelect: boolean;
   /** place shown in the card on the map tab (search result or tapped POI) */
   placeCard: Place | null;
+  /** own routing option open in the editor: its id, 'new', or null */
+  profileEditor: string | null;
+  /** all results of a submitted search, shown as points on the map */
+  searchResults: { query: string; places: Place[]; centre?: LngLat } | null;
 
   init: () => Promise<void>;
   setTab: (t: Tab) => void;
@@ -127,6 +132,11 @@ interface State {
 let routeAbort: AbortController | null = null;
 let routeTimer: ReturnType<typeof setTimeout> | null = null;
 
+/** Hand the own routing options to the router (profileById, fetchTrack). */
+function applyCustomProfiles(list: Settings['customProfiles'] = []) {
+  setCustomProfiles(list.map((p) => toRoutingProfile(normalizeProfile(p))));
+}
+
 export const useStore = create<State>((set, get) => {
   const snapshot = (): PlanSnapshot => ({ waypoints: get().waypoints, freehand: get().freehand, loop: get().loop });
   const commit = (p: Partial<State>) => {
@@ -161,6 +171,8 @@ export const useStore = create<State>((set, get) => {
     editingId: null,
     planKind: null,
     placeCard: null,
+    profileEditor: null,
+    searchResults: null,
     planName: '',
     saved: [],
     collections: [],
@@ -178,14 +190,24 @@ export const useStore = create<State>((set, get) => {
         listRoutes().catch(() => []),
         loadCollections().catch(() => []),
       ]);
-      set({ settings, saved, collections, profileId: settings.defaultProfile, ready: true });
+      applyCustomProfiles(settings.customProfiles);
+      const known = (id: string) => PROFILES.some((p) => p.id === id) || settings.customProfiles.some((p) => p.id === id);
+      set({ settings, saved, collections, profileId: known(settings.defaultProfile) ? settings.defaultProfile : 'balanced', ready: true });
     },
-    setTab: (tab) => set({ tab, detailId: tab === 'routes' ? get().detailId : null, preview: tab === 'routes' ? get().preview : null }),
+    // a place card belongs to the tab it was opened on
+    setTab: (tab) => set({ tab, placeCard: null, searchResults: null, detailId: tab === 'routes' ? get().detailId : null, preview: tab === 'routes' ? get().preview : null }),
     setSettings: (p) => {
       const settings = { ...get().settings, ...p };
+      if (p.customProfiles) {
+        applyCustomProfiles(p.customProfiles);
+        // a deleted option can no longer be the current or the default one
+        const has = (id: string) => PROFILES.some((x) => x.id === id) || p.customProfiles!.some((x) => x.id === id);
+        if (!has(settings.defaultProfile)) settings.defaultProfile = 'balanced';
+        if (!has(get().profileId)) set({ profileId: 'balanced' });
+      }
       set({ settings });
       storeSettings(settings).catch(() => {});
-      if ('bikeType' in p || 'bikeSpeed' in p || 'cyclePathPref' in p) scheduleRoute();
+      if ('bikeType' in p || 'bikeSpeed' in p || 'cyclePathPref' in p || (p.customProfiles && get().profileId.startsWith('c-'))) scheduleRoute();
     },
     setFix: (fix) => set({ fix, locationError: null }),
     setMissedStop: (missedStop) => set({ missedStop }),

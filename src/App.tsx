@@ -1,7 +1,7 @@
 import maplibregl from 'maplibre-gl';
 import { useEffect, useRef, useState } from 'react';
-import type { Place } from './lib/geocode';
-import { formatDistance, haversine } from './lib/geo';
+import { searchPlaces, type Place } from './lib/geocode';
+import { formatDistance, haversine, type LngLat } from './lib/geo';
 import { location } from './lib/location';
 import { restoreRide } from './session';
 import { useStore, type Tab } from './store';
@@ -15,11 +15,12 @@ import ProfileScreen from './components/ProfileScreen';
 import SearchBox from './components/SearchBox';
 import ExternalLinks from './components/ExternalLinks';
 import LegalSheet from './components/LegalSheet';
+import ProfileEditor from './components/ProfileEditor';
 import { BikeSheet } from './components/BikeSheet';
 import { RoundTripSheet } from './components/RoundTripSheet';
 import { LayersSheet, OfflineSheet, ProfileSheet, SaveSheet } from './components/Sheets';
 import StartNavDialog, { MissedStopDialog } from './components/StartNavDialog';
-import { Icon3D, IconBike, IconClose, IconCompass, IconHeading, IconLayers, IconLocate, IconMap, IconNavigate, IconPlan, IconProfile, IconRecord, IconRoutes } from './components/icons';
+import { Icon3D, IconBike, IconClose, IconDown, IconSearch, IconUp, IconCompass, IconHeading, IconLayers, IconLocate, IconMap, IconNavigate, IconPlan, IconProfile, IconRecord, IconRoutes } from './components/icons';
 
 function TabBar() {
   const tab = useStore((s) => s.tab);
@@ -128,6 +129,117 @@ function PlaceCard({ place, onClose }: { place: Place; onClose: () => void }) {
   );
 }
 
+/**
+ * Place search on the map: a round button top right (as in other map apps) that opens the
+ * search field. Map: the result opens the place card. Planner: a small card offers to add it
+ * to the route. Navigieren: switches to the map with the place card ("Route hierher").
+ */
+function MapSearch() {
+  const [open, setOpen] = useState(false);
+  const pick = (p: Place) => {
+    const s = useStore.getState();
+    setOpen(false);
+    if (s.tab === 'record') s.setTab('map');
+    s.showPlace(p);
+    s.focusMap({ center: p.lngLat, zoom: 15 });
+  };
+  /** Enter without picking: every result as a point on the map, the nearest ones in view */
+  const showAll = async (query: string, near?: LngLat) => {
+    setOpen(false);
+    const s = useStore.getState();
+    try {
+      const found = await searchPlaces(query, near, undefined, 40);
+      const dist = (p: Place) => (near ? haversine(near, p.lngLat) : 0);
+      const places = [...found].sort((a, b) => dist(a) - dist(b));
+      if (!places.length) return s.toastMsg(`Keine Treffer für „${query}“`);
+      if (s.tab === 'record') s.setTab('map');
+      useStore.setState({ searchResults: { query, places, centre: near }, placeCard: null });
+      // frame the nearest results (and the reference point), not one far away
+      const view = places.slice(0, 10).map((p) => p.lngLat).concat(near ? [near] : []);
+      const lons = view.map((c) => c[0]);
+      const lats = view.map((c) => c[1]);
+      s.focusMap(view.length > 1 ? { bbox: [Math.min(...lons), Math.min(...lats), Math.max(...lons), Math.max(...lats)] } : { center: view[0], zoom: 14 });
+    } catch {
+      s.toastMsg(navigator.onLine ? 'Suche fehlgeschlagen' : 'Suche ist offline nicht verfügbar');
+    }
+  };
+  if (!open)
+    return (
+      <button className="fab map-search-btn" onClick={() => setOpen(true)} aria-label="Ort suchen" data-testid="map-search-btn">
+        <IconSearch size={22} />
+      </button>
+    );
+  return (
+    <div className="topbar map-search-open" data-testid="map-search">
+      <div className="grow">
+        <SearchBox autoFocus onSelect={pick} onSubmit={showAll} />
+      </div>
+      <button className="fab small" onClick={() => setOpen(false)} aria-label="Suche schließen"><IconClose size={20} /></button>
+    </div>
+  );
+}
+
+/** Bar for the results of a submitted search: query, count, and a list to pick from. */
+function SearchResultsBar() {
+  const r = useStore((s) => s.searchResults)!;
+  const [list, setList] = useState(false);
+  const close = () => useStore.setState({ searchResults: null });
+  const go = (p: Place) => {
+    setList(false);
+    useStore.getState().showPlace(p);
+    useStore.getState().focusMap({ center: p.lngLat, zoom: 15 });
+  };
+  return (
+    <div className="results-bar" data-testid="search-results">
+      <div className="results-head">
+        <button className="grow results-title" onClick={() => setList(!list)} aria-expanded={list} data-testid="search-results-toggle">
+          <IconSearch size={18} />
+          <span className="grow ellipsis">„{r.query}“ · {r.places.length} Treffer</span>
+          {list ? <IconUp size={18} /> : <IconDown size={18} />}
+        </button>
+        <button className="icon-btn" onClick={close} aria-label="Treffer ausblenden"><IconClose size={18} /></button>
+      </div>
+      {list && (
+        <div className="results results-list" data-testid="search-results-list">
+          {r.places.map((p) => (
+            <button key={p.id} className="result" onClick={() => go(p)}>
+              <span className="result-dot" />
+              <div className="grow">
+                <div className="t">{p.name}</div>
+                <div className="d">{p.detail}</div>
+              </div>
+              {r.centre && <div className="d">{formatDistance(haversine(r.centre, p.lngLat))}</div>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Search result while planning: marker on the map and a card to add it to the route. */
+function PlanPlaceCard({ place, onClose }: { place: Place; onClose: () => void }) {
+  const s = useStore();
+  useEffect(() => {
+    if (!mapRef.current) return;
+    const m = new maplibregl.Marker({ color: '#e5383b' }).setLngLat(place.lngLat).addTo(mapRef.current);
+    return () => {
+      m.remove();
+    };
+  }, [place]);
+  const role = s.loop ? 'Als Zwischenstopp' : s.waypoints.length === 0 ? 'Als Start' : s.waypoints.length === 1 ? 'Als Ziel' : 'Als weiteren Punkt';
+  return (
+    <div className="plan-place" data-testid="plan-place">
+      <div className="grow" style={{ minWidth: 0 }}>
+        <div className="poi-card-name">{place.name}</div>
+        {place.detail && <div className="muted small ellipsis">{place.detail}</div>}
+      </div>
+      <button className="btn primary sm" onClick={() => { s.addWaypoint(place.lngLat, place.name); onClose(); }} data-testid="plan-place-add">{role}</button>
+      <button className="icon-btn" onClick={onClose} aria-label="Schließen"><IconClose size={18} /></button>
+    </div>
+  );
+}
+
 function Onboarding() {
   const setSettings = useStore((s) => s.setSettings);
   return (
@@ -163,6 +275,8 @@ export default function App() {
   const pendingNav = useStore((s) => s.pendingNav);
   const theme = useStore((s) => s.settings.theme);
   const batterySave = useStore((s) => s.settings.batterySave);
+  const profileEditor = useStore((s) => s.profileEditor);
+  const searchResults = useStore((s) => s.searchResults);
   const place = useStore((s) => s.placeCard);
   const setPlace = useStore((s) => s.showPlace);
   const [toastVisible, setToastVisible] = useState(false);
@@ -196,7 +310,7 @@ export default function App() {
   }, [toast]);
 
   useEffect(() => {
-    if (tab !== 'map') setPlace(null);
+    if (tab !== 'map' && tab !== 'plan') setPlace(null); // setTab clears it when switching between map and plan
   }, [tab]);
 
   // dark mode: follow the device or force it; battery save mode forces dark
@@ -223,14 +337,11 @@ export default function App() {
       {routing && <div className="loading-bar" />}
       <MapView />
 
-      {tab === 'map' && !navFull && sheet !== 'offline' && (
-        <div className="topbar">
-          <SearchBox
-            onSelect={(p) => {
-              setPlace(p);
-              useStore.getState().focusMap({ center: p.lngLat, zoom: 15 });
-            }}
-          />
+      {(tab === 'map' || tab === 'plan' || (tab === 'record' && !session)) && sheet !== 'offline' && <MapSearch key={tab} />}
+      {(searchResults || (tab === 'plan' && place)) && (
+        <div className="top-stack">
+          {searchResults && <SearchResultsBar />}
+          {tab === 'plan' && place && <PlanPlaceCard place={place} onClose={() => setPlace(null)} />}
         </div>
       )}
       {tab === 'map' && place && <SheetHeight><PlaceCard place={place} onClose={() => setPlace(null)} /></SheetHeight>}
@@ -251,6 +362,7 @@ export default function App() {
       {sheet === 'roundtrip' && <RoundTripSheet />}
       {sheet === 'save' && <SaveSheet />}
       {sheet === 'legal' && <LegalSheet />}
+      {profileEditor && <ProfileEditor key={profileEditor} />}
       {toast && toastVisible && <div className="toast" key={toast.id} role="status">{toast.msg}</div>}
       {ready && !onboarded && <Onboarding />}
     </div>

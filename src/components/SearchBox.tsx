@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { searchPlaces, type Place } from '../lib/geocode';
-import { formatDistance, haversine } from '../lib/geo';
+import { nearestFirst, searchPlaces, type Place } from '../lib/geocode';
+import { formatDistance, haversine, type LngLat } from '../lib/geo';
 import { useStore } from '../store';
-import { IconClose, IconLocate, IconPoi, IconSearch } from './icons';
+import { IconClose, IconLocate, IconMap, IconPoi, IconSearch } from './icons';
 import PoiPicker from './PoiPicker';
 
 interface Props {
@@ -13,10 +13,29 @@ interface Props {
   onFocusChange?: (f: boolean) => void;
   /** show a POI button that opens a map of places to pick from; the value is that map's title */
   poiTitle?: string;
+  /**
+   * Where to search around and measure distances from. Without it: the planner's last point
+   * if there is a plan, else the visible map, else the GPS position.
+   */
+  near?: LngLat;
+  /** Enter / search key without picking a result: show all results (on the map) */
+  onSubmit?: (query: string, near?: LngLat) => void;
 }
 
-export default function SearchBox({ placeholder = 'Ort oder Adresse suchen', onSelect, autoFocus, showMyLocation, onFocusChange, poiTitle }: Props) {
+/** Reference point for a search: the given one, the plan's last point, the map centre or the GPS position. */
+export function searchCentre(near?: LngLat): LngLat | undefined {
+  if (near) return near;
+  const s = useStore.getState();
+  const last = s.tab === 'plan' ? s.waypoints[s.waypoints.length - 1]?.lngLat : undefined;
+  if (last) return last;
+  const c = (window as any).__bikepathMap?.getCenter();
+  return c ? [c.lng, c.lat] : s.fix?.lngLat;
+}
+
+export default function SearchBox({ placeholder = 'Ort oder Adresse suchen', onSelect, autoFocus, showMyLocation, onFocusChange, poiTitle, near, onSubmit }: Props) {
   const [poiOpen, setPoiOpen] = useState(false);
+  /** point the current results were searched around; distances are measured from it */
+  const [centre, setCentre] = useState<LngLat | undefined>();
   const [q, setQ] = useState('');
   const [res, setRes] = useState<Place[]>([]);
   const [busy, setBusy] = useState(false);
@@ -37,8 +56,9 @@ export default function SearchBox({ placeholder = 'Ort oder Adresse suchen', onS
       abort.current = ctrl;
       setBusy(true);
       try {
-        const center = fix?.lngLat ?? (window as any).__bikepathMap?.getCenter().toArray();
-        setRes(await searchPlaces(q, center, ctrl.signal));
+        const c = searchCentre(near);
+        setCentre(c);
+        setRes(nearestFirst(await searchPlaces(q, c, ctrl.signal), c));
         setErr(null);
       } catch (e) {
         if ((e as Error).name !== 'AbortError') setErr(navigator.onLine ? 'Suche fehlgeschlagen' : 'Suche ist offline nicht verfügbar');
@@ -48,6 +68,16 @@ export default function SearchBox({ placeholder = 'Ort oder Adresse suchen', onS
     }, 280);
     return () => clearTimeout(t);
   }, [q]);
+
+  const submit = () => {
+    const query = q.trim();
+    setQ('');
+    setRes([]);
+    setFocused(false);
+    onFocusChange?.(false);
+    (document.activeElement as HTMLElement)?.blur();
+    onSubmit?.(query, searchCentre(near));
+  };
 
   const pick = (p: Place) => {
     setQ('');
@@ -73,7 +103,11 @@ export default function SearchBox({ placeholder = 'Ort oder Adresse suchen', onS
             onFocusChange?.(true);
           }}
           onBlur={() => setTimeout(() => { setFocused(false); onFocusChange?.(false); }, 200)}
-          onKeyDown={(e) => e.key === 'Enter' && res[0] && pick(res[0])}
+          onKeyDown={(e) => {
+            if (e.key !== 'Enter') return;
+            if (onSubmit && q.trim().length >= 2) submit();
+            else if (res[0]) pick(res[0]);
+          }}
           aria-label="Suche"
         />
         {busy && <span className="muted small">…</span>}
@@ -91,6 +125,7 @@ export default function SearchBox({ placeholder = 'Ort oder Adresse suchen', onS
       {poiOpen && poiTitle && (
         <PoiPicker
           title={poiTitle}
+          center={searchCentre(near)}
           onClose={() => setPoiOpen(false)}
           onPick={(p) => {
             setPoiOpen(false);
@@ -106,6 +141,12 @@ export default function SearchBox({ placeholder = 'Ort oder Adresse suchen', onS
               <div className="t">Mein Standort</div>
             </button>
           )}
+          {onSubmit && q.trim().length >= 2 && res.length > 1 && (
+            <button className="result all-results" onMouseDown={(e) => e.preventDefault()} onClick={submit} data-testid="search-all">
+              <IconMap size={20} style={{ color: '#0b6bd6' }} />
+              <div className="t">Alle Treffer für „{q.trim()}“ auf der Karte zeigen</div>
+            </button>
+          )}
           {err && <div className="result muted">{err}</div>}
           {res.map((p) => (
             <button key={p.id} className="result" onMouseDown={(e) => e.preventDefault()} onClick={() => pick(p)}>
@@ -114,7 +155,7 @@ export default function SearchBox({ placeholder = 'Ort oder Adresse suchen', onS
                 <div className="t">{p.name}</div>
                 <div className="d">{p.detail}</div>
               </div>
-              {fix && <div className="d">{formatDistance(haversine(fix.lngLat, p.lngLat))}</div>}
+              {centre && <div className="d">{formatDistance(haversine(centre, p.lngLat))}</div>}
             </button>
           ))}
         </div>

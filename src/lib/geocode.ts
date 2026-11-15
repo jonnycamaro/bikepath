@@ -42,10 +42,10 @@ export function parseCoordinates(q: string): LngLat | null {
   return [lon, lat];
 }
 
-export async function searchPlaces(q: string, near?: LngLat, signal?: AbortSignal): Promise<Place[]> {
+export async function searchPlaces(q: string, near?: LngLat, signal?: AbortSignal, limit = 8): Promise<Place[]> {
   const c = parseCoordinates(q);
   if (c) return [{ id: 'coord', name: `${c[1].toFixed(5)}, ${c[0].toFixed(5)}`, detail: 'Koordinaten', lngLat: c, kind: 'coord' }];
-  const params = new URLSearchParams({ q, limit: '8', lang: 'de' });
+  const params = new URLSearchParams({ q, limit: String(limit), lang: 'de' });
   if (near) {
     params.set('lat', String(near[1]));
     params.set('lon', String(near[0]));
@@ -77,4 +77,18 @@ export async function reverseTown(p: LngLat, signal?: AbortSignal): Promise<stri
   } catch {
     return null;
   }
+}
+
+/**
+ * Photon ranks by text match and prominence. Among results with the same name (e.g. many
+ * "Barfußpfad"), the nearest one is the one wanted, so those are ordered by distance from
+ * `near`; different names keep Photon's order.
+ */
+export function nearestFirst(places: Place[], near?: LngLat): Place[] {
+  if (!near) return places;
+  const key = (p: Place) => p.name.toLowerCase().replace(/ß/g, 'ss').replace(/[^a-z0-9äöü]/g, '');
+  const dist = (p: Place) => (p.lngLat[0] - near[0]) ** 2 * Math.cos((near[1] * Math.PI) / 180) ** 2 + (p.lngLat[1] - near[1]) ** 2;
+  const groups = new Map<string, Place[]>();
+  for (const p of places) groups.set(key(p), [...(groups.get(key(p)) ?? []), p]);
+  return [...groups.values()].flatMap((g) => g.sort((a, b) => dist(a) - dist(b)));
 }

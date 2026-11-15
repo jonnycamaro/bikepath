@@ -1,3 +1,4 @@
+import { profileById } from './routing';
 /**
  * The rider's bike. It sets the pace that durations, arrival times and time-based round trips
  * are calculated with; the routing option only nudges it (trails are slower than tarmac).
@@ -47,4 +48,4 @@ export const bikeSpeed = (s: PaceSettings): number => s.bikeSpeed ?? bikeById(s.
 
 /** Pace used for a route planned with the routing option `profileId`. */
 export const rideSpeed = (s: PaceSettings, profileId: string): number =>
-  Math.round(bikeSpeed(s) * (OPTION_FACTOR[profileId] ?? 1) * 10) / 10;
+  Math.round(bikeSpeed(s) * (OPTION_FACTOR[profileId] ?? profileById(profileId).paceFactor ?? 1) * 10) / 10;

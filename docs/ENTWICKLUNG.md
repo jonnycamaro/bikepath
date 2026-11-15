@@ -51,6 +51,7 @@ Testbarkeit.
 | `mapStyles.ts`, `routeStyle.ts` | Kartenstile, Overlays, Einfärbung nach Steigung |
 | `speech.ts`, `wakelock.ts`, `batterySave.ts` | Sprachausgabe, Display anlassen, Energiesparen |
 | `roundtrip.ts` | Rundtour-Suche: kein Kreis, sondern Wendepunkt in der gewählten Richtung; Vorgabe als Distanz oder Fahrzeit; Hinweg frei geroutet, Rückweg mit Strafkosten auf dem Hinweg; Zwischenstopps werden eingereiht (weitester Stopp = Wendepunkt); `LoopProblem` meldet, wenn Stopps nicht in Umfang oder Richtung passen, samt Lösungswert |
+| `customProfile.ts` | Eigene Routenoptionen: Datenmodell, Vorlagen und `brouterScript()`, das daraus ein vollständiges BRouter-Profil erzeugt |
 | `bike.ts` | Fahrradtypen und das Tempo daraus (`rideSpeed`): Grundlage für Fahrzeiten, Ankunft und Rundtouren nach Zeit; die Routenoption verschiebt es nur leicht |
 
 ### store.ts – was die Oberfläche sieht
@@ -154,6 +155,43 @@ mit Offline-Karten. Overpass wurde dafür aufgegeben: Die öffentlichen Server w
   öffnet `PoiPicker`. Ein Tipp auf einen Ort zeigt eine Karte mit „Übernehmen“ und den Links.
 - **Simulation** ist ein Schalter im Startdialog (`StartNavDialog.tsx`, standardmäßig aus)
   und wird an `startNavigation(route, { simulate })` übergeben.
+
+## Eigene Routenoptionen
+
+Die vorgegebenen Optionen nutzen fertige Profile des BRouter-Servers und ändern höchstens
+einzelne Variablen. Eigene Optionen gehen weiter: `customProfile.ts` erzeugt aus den
+Einstellungen ein **vollständiges BRouter-Profil**, `routing.ts` lädt es per
+`POST https://brouter.de/brouter/profile` hoch und routet mit der zurückgegebenen
+`custom_…`-Id.
+
+- **Reihenfolge → Kosten:** Der erste erlaubte Eintrag einer Liste bekommt den Faktor 1,
+  jeder weitere `STRENGTH_STEP` mehr; „Meiden“ ×3, „Nie“ = 10000 (BRouter-Sperre).
+  Wegart- und Untergrundfaktor werden multipliziert.
+- **Steigung:** `uphillcost` für „Höhenmeter meiden“, `uphillmaxslope`/`downhillmaxslope`
+  für die Grenzen. Die Grenze ist weich (hohe Kosten statt Sperre), sonst gäbe es im
+  Bergland oft keine Route. Live-Test: in Stuttgart 11 km Umweg statt 2,3 km steil.
+- **Zugang, Einbahnstraßen, Abbiegehinweise** stammen aus BRouters `trekking.brf`
+  (MIT-Lizenz, unter „Rechtliches“ genannt).
+- **Nur Hauptwerte aus `lookups.dat`:** Ein Alias (etwa `chipseal` statt `paved`) ist auf
+  dem Server ein Parse-Fehler; das Hochladen liefert dann zwar eine Id, aber jede Route
+  scheitert mit HTTP 500. Ein Unit-Test prüft das für bekannte Aliase.
+- **Hochgeladene Profile verfallen** auf dem Server nach einer Weile (HTTP 500).
+  `fetchTrack` lädt dann einmal neu hoch und versucht es erneut. Der Upload wird pro
+  Skript geteilt und ist deshalb nicht abbrechbar.
+- Gespeichert werden die Optionen in `settings.customProfiles`; der Store meldet sie mit
+  `setCustomProfiles()` beim Router an, damit `profileById()` sie findet.
+- Editor: `ProfileEditor.tsx`, geöffnet über `store.profileEditor` (`'new'` oder Id).
+
+## Suche auf der Karte
+
+- `MapSearch` in `App.tsx`: runder Knopf oben rechts auf Karte, Planen und Navigieren.
+- **Bezugspunkt** (`searchCentre()` in `SearchBox.tsx`): beim Planen der letzte
+  Routenpunkt, sonst der Kartenmittelpunkt, zuletzt die GPS-Position. Er steuert die
+  Suche und die angezeigten Entfernungen. Gleichnamige Treffer sortiert `nearestFirst()`
+  nach Nähe.
+- **Alle Treffer:** Enter (`onSubmit`) holt bis zu 40 Treffer, legt sie in
+  `store.searchResults` und zeichnet sie als Ebene `search-dot` in `MapView.tsx`.
+  `setTab` räumt sie und die Ortskarte (`placeCard`) beim Tabwechsel ab.
 
 ## Lizenzen und Quellenangaben
 

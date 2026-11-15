@@ -1,9 +1,9 @@
 import { formatClock, formatDistance } from '../lib/geo';
-import { PROFILES } from '../lib/routing';
+import { customRoutingProfiles, PROFILES } from '../lib/routing';
 import { location } from '../lib/location';
 import { useStore } from '../store';
 import { COMPUTER_FIELDS } from './NavigationScreen';
-import { IconChevron, IconOffline, IconShare } from './icons';
+import { IconChevron, IconOffline, IconPlus, IconShare, ProfileBadge } from './icons';
 import { BikeSelector } from './BikeSheet';
 import { Switch } from './Sheets';
 
@@ -161,6 +161,25 @@ export default function ProfileScreen() {
         ))}
       </div>
 
+      <div className="panel" data-testid="custom-profiles">
+        <h3 style={{ marginTop: 0 }}>Eigene Routenoptionen</h3>
+        {settings.customProfiles.length === 0 && (
+          <div className="sub-note" style={{ marginBottom: 10 }}>Lege fest, welche Wege, Untergründe und Steigungen deine Routen nehmen sollen. Eigene Optionen erscheinen im Planer neben den vorgegebenen.</div>
+        )}
+        {settings.customProfiles.map((p) => (
+          <button key={p.id} className="setting row-btn" onClick={() => useStore.setState({ profileEditor: p.id })} data-testid={`custom-${p.id}`}>
+            <div className="row" style={{ minWidth: 0 }}>
+              <ProfileBadge icon={p.icon} color={p.color} size={34} />
+              <div style={{ minWidth: 0 }}><div className="lbl">{p.name}</div>{p.comment && <div className="sub ellipsis">{p.comment}</div>}</div>
+            </div>
+            <IconChevron size={18} />
+          </button>
+        ))}
+        <button className="btn block" style={{ marginTop: 10 }} onClick={() => useStore.setState({ profileEditor: 'new' })} data-testid="custom-new">
+          <IconPlus size={18} /> Neue Routenoption
+        </button>
+      </div>
+
       <div className="panel">
         <h3 style={{ marginTop: 0 }}>Allgemein</h3>
         <div className="setting">
@@ -181,7 +200,7 @@ export default function ProfileScreen() {
         <div className="setting">
           <div className="lbl">Standard-Routing</div>
           <select className="input" style={{ width: 170, height: 40 }} value={settings.defaultProfile} onChange={(e) => setSettings({ defaultProfile: e.target.value })}>
-            {PROFILES.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+            {[...PROFILES, ...customRoutingProfiles()].map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
           </select>
         </div>
         <div className="setting">

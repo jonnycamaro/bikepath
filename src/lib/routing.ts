@@ -11,6 +11,12 @@ export interface RoutingProfile {
   params?: Record<string, string | number>;
   speedKmh: number; // default estimated speed
   icon: string;
+  /** own routing option: the generated BRouter profile script (uploaded on demand) */
+  script?: string;
+  /** own routing option: badge colour (built-in options take theirs from the icon) */
+  color?: string;
+  /** own routing option: pace compared to the rider's usual speed */
+  paceFactor?: number;
 }
 
 /** Cycle-path preference for the loop planner: low / medium / high. */
@@ -34,7 +40,35 @@ export const PROFILES: RoutingProfile[] = [
   { id: 'freehand', label: 'Freihand', description: 'Gerade Linien ohne Routing', brouter: null, speedKmh: 18, icon: 'pen' },
 ];
 
-export const profileById = (id: string) => PROFILES.find((p) => p.id === id) ?? PROFILES[0];
+/** Own routing options, set by the store from the settings (see customProfile.ts). */
+let customProfiles: RoutingProfile[] = [];
+export function setCustomProfiles(list: RoutingProfile[]) {
+  customProfiles = list;
+}
+export const customRoutingProfiles = () => customProfiles;
+
+export const profileById = (id: string) => PROFILES.find((p) => p.id === id) ?? customProfiles.find((p) => p.id === id) ?? PROFILES[0];
+
+/**
+ * Upload an own profile script to BRouter once and remember its id. The server keeps such
+ * profiles only for a while; `fetchTrack` drops the id and uploads again when it is gone.
+ */
+const uploaded = new Map<string, Promise<string>>();
+function uploadProfile(script: string): Promise<string> {
+  let id = uploaded.get(script);
+  if (!id) {
+    // no abort signal: the upload is shared by every request that needs this profile
+    id = fetch(`${BROUTER}/profile`, { method: 'POST', body: script })
+      .then((r) => r.json())
+      .then((j: { profileid?: string; error?: string }) => j.profileid ?? Promise.reject(new Error(j.error || 'Eigene Routenoption wurde nicht angenommen')))
+      .catch((e) => {
+        uploaded.delete(script);
+        throw e;
+      });
+    uploaded.set(script, id);
+  }
+  return id;
+}
 
 export interface Waypoint {
   id: string;
@@ -190,6 +224,13 @@ function freehandLeg(a: LngLat, b: LngLat): Leg {
 
 const legCache = new Map<string, Leg>();
 
+/** short, stable fingerprint of a profile script for cache keys */
+function hash(s: string): string {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+}
+
 export function profileQuery(params: Record<string, string | number> = {}): string {
   return Object.entries(params).map(([k, v]) => `&profile:${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`).join('');
 }
@@ -216,15 +257,17 @@ export async function fetchTrack(points: LngLat[], profile: RoutingProfile, opts
   if (!profile.brouter) throw new Error('Freihand kann nicht geroutet werden');
   const pq = profileQuery({ ...(profile.params ?? {}), ...(opts.params ?? {}) });
   const lonlats = points.map((p) => `${p[0].toFixed(6)},${p[1].toFixed(6)}`).join('|');
-  const key = `${profile.brouter}${pq}|${lonlats}|${opts.nogos ?? ''}`;
+  const key = `${profile.script ? `${profile.id}:${hash(profile.script)}` : profile.brouter}${pq}|${lonlats}|${opts.nogos ?? ''}`;
   const hit = legCache.get(key);
   if (hit) return hit;
-  const url =
-    `${BROUTER}?lonlats=${lonlats}&profile=${profile.brouter}${pq}` +
+  const urlFor = (name: string) =>
+    `${BROUTER}?lonlats=${lonlats}&profile=${name}${pq}` +
     (opts.nogos ? `&nogos=${opts.nogos}` : '') +
     `&alternativeidx=0&format=geojson&timode=3`;
+  let reuploaded = false;
   for (let attempt = 0; ; attempt++) {
-    const res = await fetch(url, { signal: opts.signal });
+    const name = profile.script ? await uploadProfile(profile.script) : profile.brouter;
+    const res = await fetch(urlFor(name), { signal: opts.signal });
     const text = await res.text();
     if (res.ok && text.trim().startsWith('{')) {
       const leg = parseBrouter(JSON.parse(text));
@@ -234,6 +277,12 @@ export async function fetchTrack(points: LngLat[], profile: RoutingProfile, opts
     }
     if (/retry later/i.test(text) && attempt < 3) {
       await sleep(900 * (attempt + 1), opts.signal);
+      continue;
+    }
+    // the server forgets uploaded profiles after a while (it then answers 500): upload once more
+    if (profile.script && !reuploaded && !/not mapped|target island|no track found/i.test(text)) {
+      reuploaded = true;
+      uploaded.delete(profile.script);
       continue;
     }
     throw new Error(text.includes('not mapped') || text.includes('target island')

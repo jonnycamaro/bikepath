@@ -26,7 +26,7 @@ const SOURCES: Source[] = [
       'ArcticDEM: aus DigitalGlobe-Bildern, gefördert von der US National Science Foundation · Australien: © Commonwealth of Australia (Geoscience Australia) 2017 · Österreich: © offene Daten Österreichs – Digitales Geländemodell (DGM) Österreich · Kanada: enthält Informationen unter der Open Government Licence – Canada · Europa: erzeugt mit Copernicus-Daten, gefördert von der Europäischen Union – EU-DEM · Global: ETOPO1, U.S. National Oceanic and Atmospheric Administration · Mexiko: INEGI, Continental relief, 2016 · Neuseeland: Copyright 2011 Crown copyright (c) Land Information New Zealand und New Zealand Government · Norwegen: © Kartverket · Vereinigtes Königreich: © Environment Agency copyright and/or database right 2015 · USA 3DEP sowie global GMTED2010 und SRTM: U.S. Geological Survey',
     url: 'https://registry.opendata.aws/terrain-tiles/',
   },
-  { name: 'BRouter', use: 'Routenberechnung', notice: 'BRouter von Arndt Brenschede · Daten © OpenStreetMap-Mitwirkende', url: 'https://brouter.de' },
+  { name: 'BRouter', use: 'Routenberechnung; Vorlage für eigene Routenoptionen (Profil „trekking“)', notice: 'BRouter von Arndt Brenschede · Daten © OpenStreetMap-Mitwirkende', license: 'BRouter-Profile: MIT', url: 'https://github.com/abrensch/brouter' },
   { name: 'Photon (komoot)', use: 'Orts- und Adresssuche', notice: 'Photon von komoot · Daten © OpenStreetMap-Mitwirkende', url: 'https://photon.komoot.io' },
   { name: 'Open-Meteo', use: 'Wetter und Wind', notice: 'Wetterdaten von Open-Meteo.com', license: 'CC BY 4.0', url: 'https://open-meteo.com' },
 ];

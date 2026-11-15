@@ -17,6 +17,7 @@ Unter `.claude/skills/` liegen zusätzlich Anleitungen für Claude Code
 
 ## Funktionen
 
+- **Suche:** Lupe oben rechts auf Karte, Planen und Navigieren. Ein Vorschlag zoomt zum Ort; Enter bzw. „Alle Treffer auf der Karte zeigen“ zeigt alle Treffer (bis 40) als Punkte mit Liste, nach Entfernung sortiert. Beim Planen wird um den letzten Routenpunkt gesucht, sonst um den sichtbaren Kartenausschnitt.
 - **Karte:** Suche (Adressen, Orte, Koordinaten), eigener Standort mit Folgemodus und Fahrtrichtung, 7 Kartenstile, 3D-Gelände, Ebenen (Radrouten, MTB-Routen, Relief, POIs). Langes Drücken auf die Karte öffnet „Route hierher“.
 - **POIs:** Cafés, Restaurants, Supermärkte, Trinkwasser, WCs, Radläden, Sehenswürdigkeiten, Unterkünfte und mehr aus OpenStreetMap – 14 Kategorien, einzeln wählbar. Als Kartenebene zuschaltbar; herausgezoomt fassen Kreise mit Anzahl nahe Orte zusammen, ein Tipp zoomt hinein. Ein angetippter Ort zeigt Name, Kategorie und Links „Google Maps“ und „Tripadvisor“.
 - **Planen:**
@@ -26,6 +27,7 @@ Unter `.claude/skills/` liegen zusätzlich Anleitungen für Claude Code
   - Punkte verschieben, Routenlinie ziehen, um einen Punkt einzufügen
   - Rückgängig, Wiederholen, Umkehren, Reihenfolge ändern, Freihand-Abschnitte
   - 9 Routing-Optionen: Ausgewogen, Schnellste, Radwege, Rennrad, Geschmeidig, Gravel, Mountainbike, E-Bike, Kürzeste
+  - Eigene Routenoptionen (Profil → Eigene Routenoptionen): Wegarten und Untergründe in Wunschreihenfolge, je Ja/Meiden/Nie; Höhenmeter meiden, höchste Steigung und höchstes Gefälle; Radrouten, Schieben, Treppen, Fähren, Tempo; Name, Kommentar, Symbol und Farbe. Vorlagen: Ausgewogen, Rennrad, Gravel, Familie
   - Radweg-Stufe niedrig/mittel/hoch
   - Distanz, Dauer, Auf- und Abstieg, Höhenprofil nach Steigung eingefärbt
   - Route Insights: Untergrund, Wegtyp und Steigung, auch farbig auf der Karte
@@ -46,7 +48,7 @@ Unter `.claude/skills/` liegen zusätzlich Anleitungen für Claude Code
 - **Meine Routen:** Geplant, Gefahren, Favoriten, Sammlungen. Detailansicht, Bearbeiten, Umbenennen, Löschen.
   - Import: GPX und KML
   - Export: GPX und KML, auch über das Teilen-Menü
-- **Profil:** App-Link teilen (Teilen-Menü des Handys), Rechtliches & Lizenzen (Quellenangaben, Open-Source-Lizenzen). Statistik für 7 Tage, 30 Tage und gesamt. Navigationsmodus, Batteriesparmodus, Darstellung (System/Hell/Dunkel), Adressen, Fahrradcomputer-Layouts, Offline-Karten.
+- **Profil:** Eigene Routenoptionen anlegen und bearbeiten, App-Link teilen (Teilen-Menü des Handys), Rechtliches & Lizenzen (Quellenangaben, Open-Source-Lizenzen). Statistik für 7 Tage, 30 Tage und gesamt. Navigationsmodus, Batteriesparmodus, Darstellung (System/Hell/Dunkel), Adressen, Fahrradcomputer-Layouts, Offline-Karten.
 - **Offline:** App-Shell, gespeicherte Routen und heruntergeladene Kartengebiete funktionieren ohne Netz.
 - **Simulation:** Im Startdialog der Navigation („Weiter mit“) schaltet „Simulation aktivieren“ eine virtuelle Fahrt entlang der Route ein (standardmäßig aus). Gedacht für Demo und Test.
 

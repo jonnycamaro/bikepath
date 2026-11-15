@@ -46,6 +46,7 @@ function addAppLayers(map: MLMap) {
   src('nav-route');
   src('track');
   src('drag-ghost');
+  src('search');
   const casing = (id: string, source: string, width = 9) => {
     if (!map.getLayer(id))
       map.addLayer({ id, type: 'line', source, layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#ffffff', 'line-width': ['interpolate', ['linear'], ['zoom'], 8, width * 0.55, 16, width * 1.4] } });
@@ -63,6 +64,18 @@ function addAppLayers(map: MLMap) {
     map.addLayer({ id: 'track-line', type: 'line', source: 'track', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#e5383b', 'line-width': ['interpolate', ['linear'], ['zoom'], 8, 2.5, 16, 6] } });
   if (!map.getLayer('drag-ghost'))
     map.addLayer({ id: 'drag-ghost', type: 'line', source: 'drag-ghost', paint: { 'line-color': '#0b6bd6', 'line-width': 3, 'line-dasharray': [2, 2] } });
+  // results of a submitted search ("alle Treffer auf der Karte")
+  if (!map.getLayer('search-dot'))
+    map.addLayer({
+      id: 'search-dot', type: 'circle', source: 'search',
+      paint: { 'circle-radius': 9, 'circle-color': '#e5383b', 'circle-stroke-color': '#fff', 'circle-stroke-width': 2.5 },
+    });
+  if (!map.getLayer('search-label'))
+    map.addLayer({
+      id: 'search-label', type: 'symbol', source: 'search',
+      layout: { 'text-field': ['get', 'name'], 'text-font': ['Noto Sans Bold'], 'text-size': 12, 'text-offset': [0, 1.3], 'text-anchor': 'top', 'text-optional': true, 'text-max-width': 10 },
+      paint: { 'text-color': '#a4161a', 'text-halo-color': '#fff', 'text-halo-width': 1.6 },
+    });
   // POIs on top, clustered; shown only when the "POIs" layer is switched on
   const st = useStore.getState().settings;
   addPoiLayers(map, 'pois', !!styleById(st.mapStyle).dark, st.overlays.includes('pois'));
@@ -121,6 +134,16 @@ export default function MapView() {
     map.on('click', (e) => {
       if (dragging.current) return;
       const s = useStore.getState();
+      // a search result: zoom there and show its card
+      const [hitResult] = s.searchResults && map.getLayer('search-dot') ? map.queryRenderedFeatures(e.point, { layers: ['search-dot'] }) : [];
+      if (hitResult) {
+        const place = s.searchResults!.places[hitResult.properties.i as number];
+        if (place) {
+          s.showPlace(place);
+          s.focusMap({ center: place.lngLat, zoom: Math.max(map.getZoom(), 15) });
+          return;
+        }
+      }
       // POI layer: a circle zooms in, a place is picked (planner) or shown (map)
       const ids = poiLayerIds('pois');
       if (s.settings.overlays.includes('pois') && map.getLayer(ids.cluster)) {
@@ -271,6 +294,21 @@ export default function MapView() {
     const map = mapRef.current;
     if (loaded && styleReady(map) && settings.overlays.includes('pois')) (map as any).__loadPois?.();
   }, [settings.poiTypes.join()]);
+
+  // results of a submitted search
+  const searchResults = useStore((s) => s.searchResults);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!loaded || !styleReady(map)) return;
+    (map.getSource('search') as GeoJSONSource)?.setData(
+      searchResults
+        ? {
+            type: 'FeatureCollection',
+            features: searchResults.places.map((p, i) => ({ type: 'Feature', properties: { i, name: p.name }, geometry: { type: 'Point', coordinates: p.lngLat } })),
+          }
+        : EMPTY,
+    );
+  }, [searchResults, loaded]);
 
   // planned route
   useEffect(() => {
